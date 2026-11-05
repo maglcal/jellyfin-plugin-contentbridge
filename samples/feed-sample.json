@@ -1,0 +1,52 @@
+{
+  "schema": "contentbridge-feed/1",
+  "updated": "2026-11-05T12:00:00Z",
+  "items": [
+    {
+      "id": "demo-movie-001",
+      "title": "示例电影",
+      "year": "2025",
+      "type": "movie",
+      "poster": "https://img.example.com/demo-movie.jpg",
+      "summary": "一部用来演示 Feed 格式的电影。",
+      "category": "剧情片",
+      "area": "中国",
+      "lang": "汉语普通话",
+      "actors": ["演员甲", "演员乙"],
+      "directors": ["导演甲"],
+      "score": 8.1,
+      "playLines": [
+        {
+          "name": "m3u8",
+          "episodes": [
+            { "name": "正片", "url": "https://cdn.example.com/demo-movie/index.m3u8" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "demo-series-001",
+      "title": "示例剧集",
+      "year": 2026,
+      "type": "series",
+      "remarks": "更新至 2 集",
+      "category": "连续剧",
+      "playLines": [
+        {
+          "name": "线路A",
+          "episodes": [
+            { "name": "第1集", "url": "https://cdn.example.com/s01e01.m3u8", "number": 1 },
+            { "name": "第2集", "url": "https://cdn.example.com/s01e02.m3u8", "number": 2 }
+          ]
+        },
+        {
+          "name": "备用线路",
+          "episodes": [
+            { "name": "第1集", "url": "https://backup.example.com/s01e01.mp4", "number": 1 },
+            { "name": "第2集", "url": "https://backup.example.com/s01e02.mp4", "number": 2 }
+          ]
+        }
+      ]
+    }
+  ]
+}

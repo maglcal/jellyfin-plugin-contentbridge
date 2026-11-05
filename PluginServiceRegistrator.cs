@@ -14,6 +14,7 @@ namespace Jellyfin.Plugin.ContentBridge
         public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
         {
             serviceCollection.AddSingleton<ContentApiClient>();
+            serviceCollection.AddSingleton<FeedClient>();
             serviceCollection.AddSingleton<StrmLibraryWriter>();
             serviceCollection.AddSingleton<StreamProxyService>();
             serviceCollection.AddSingleton<SyncService>();

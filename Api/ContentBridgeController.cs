@@ -19,11 +19,13 @@ namespace Jellyfin.Plugin.ContentBridge.Api
     public class ContentBridgeController : ControllerBase
     {
         private readonly ContentApiClient _client;
+        private readonly FeedClient _feed;
         private readonly SyncService _syncService;
 
-        public ContentBridgeController(ContentApiClient client, SyncService syncService)
+        public ContentBridgeController(ContentApiClient client, FeedClient feed, SyncService syncService)
         {
             _client = client;
+            _feed = feed;
             _syncService = syncService;
         }
 
@@ -45,6 +47,17 @@ namespace Jellyfin.Plugin.ContentBridge.Api
             if (string.IsNullOrWhiteSpace(keyword))
             {
                 return new List<VodEntry>();
+            }
+
+            if (SyncService.IsFeedSource(sourceConfig))
+            {
+                var entries = await _feed.LoadAsync(sourceConfig, cancellationToken).ConfigureAwait(false);
+                return entries
+                    .Where(e => (e.Name ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+                                || (e.Content ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+                                || (e.Remarks ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                    .Take(30)
+                    .ToList();
             }
 
             var result = await _client.SearchAsync(sourceConfig, keyword, cancellationToken).ConfigureAwait(false);

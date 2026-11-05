@@ -63,7 +63,10 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             Directory.CreateDirectory(titleRoot);
 
-            if (playLine.Episodes.Count == 1)
+            var isSeries = playLine.Episodes.Count > 1
+                           || string.Equals(entry.EntryType, "series", StringComparison.OrdinalIgnoreCase);
+
+            if (!isSeries)
             {
                 // movie
                 var strmName = $"{folderName}.strm";
@@ -106,7 +109,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 for (var i = 0; i < playLine.Episodes.Count; i++)
                 {
                     var episode = playLine.Episodes[i];
-                    var number = ResolveEpisodeNumber(episode.Name, i + 1, usedNumbers);
+                    var number = ResolveEpisodeNumber(episode, i + 1, usedNumbers);
                     var baseName = $"{title} - S01E{number:00}";
                     var strmPath = Path.Combine(seasonDir, baseName + ".strm");
                     await File.WriteAllTextAsync(
@@ -193,18 +196,27 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             return entry.PlaySources.FirstOrDefault(s => s.Episodes.Count > 0);
         }
 
-        private static int ResolveEpisodeNumber(string episodeName, int fallback, HashSet<int> used)
+        private static int ResolveEpisodeNumber(PlayEpisode episode, int fallback, HashSet<int> used)
         {
             var number = fallback;
-            var match = EpisodeNumberRegex.Match(episodeName ?? string.Empty);
-            if (match.Success)
+
+            // explicit number from the feed standard wins
+            if (episode.Number is int explicitNumber && explicitNumber > 0)
             {
-                foreach (Group group in match.Groups)
+                number = explicitNumber;
+            }
+            else
+            {
+                var match = EpisodeNumberRegex.Match(episode.Name ?? string.Empty);
+                if (match.Success)
                 {
-                    if (group.Success && int.TryParse(group.Value, out var parsed) && parsed > 0)
+                    foreach (Group group in match.Groups)
                     {
-                        number = parsed;
-                        break;
+                        if (group.Success && int.TryParse(group.Value, out var parsed) && parsed > 0)
+                        {
+                            number = parsed;
+                            break;
+                        }
                     }
                 }
             }

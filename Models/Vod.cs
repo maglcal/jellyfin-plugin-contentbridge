@@ -32,6 +32,12 @@ namespace Jellyfin.Plugin.ContentBridge.Models
         public string Score { get; set; } = string.Empty;
 
         /// <summary>
+        /// Gets or sets the forced layout type: "movie", "series", or empty for auto
+        /// (1 episode = movie, more = series). Feed standard only.
+        /// </summary>
+        public string EntryType { get; set; } = string.Empty;
+
+        /// <summary>
         /// Gets the play lines. Each line (flag) contains its own episode list.
         /// </summary>
         public List<PlaySource> PlaySources { get; set; } = new List<PlaySource>();
@@ -55,6 +61,9 @@ namespace Jellyfin.Plugin.ContentBridge.Models
         public string Name { get; set; } = string.Empty;
 
         public string Url { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets the optional explicit episode number (feed standard).</summary>
+        public int? Number { get; set; }
     }
 
     /// <summary>

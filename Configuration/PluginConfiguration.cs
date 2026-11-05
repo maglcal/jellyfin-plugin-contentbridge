@@ -62,8 +62,15 @@ namespace Jellyfin.Plugin.ContentBridge
         /// <summary>Gets or sets the display name (also used as subfolder name).</summary>
         public string Name { get; set; } = "默认源";
 
-        /// <summary>Gets or sets the API base url, e.g. https://host/api.php/provide/vod/</summary>
+        /// <summary>Gets or sets the API base url, e.g. https://host/api.php/provide/vod/
+        /// (maccms type) or the feed file / directory / url (feed type).</summary>
         public string ApiUrl { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the source protocol type: "maccms" (MaccCMS/Hailuo provide-vod API)
+        /// or "feed" (ContentBridge Feed standard, see FEED-SPEC.md).
+        /// </summary>
+        public string Type { get; set; } = "maccms";
 
         /// <summary>Gets or sets a value indicating whether this source is active.</summary>
         public bool Enabled { get; set; } = true;

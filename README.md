@@ -63,7 +63,13 @@ Jellyfin 混合媒体库（Movies + Shows）→ 海报墙 / 搜索 / 全客户�
 
 ## 接口协议
 
-适配标准 **MaccCMS（苹果CMS）/ 海螺** 系 provide vod 接口：
+两种数据源类型（数据源配置里选）：
+
+**1. 自定义 Feed（自己写采集程序推荐）**——按 [FEED-SPEC.md](FEED-SPEC.md) 规范产出 JSON 文件/目录/URL 即可，
+插件负责解析入库。采集程序只管落数据，不用提供任何 HTTP 服务。规范含字段表、合并规则、
+自测清单和[样例](samples/feed-sample.json)。
+
+**2. 标准接口**——适配 **MaccCMS（苹果CMS）/ 海螺** 系 provide vod 接口：
 
 - 列表：`?ac=detail&at=json&pg=1&t=分类ID`（JSON 优先，XML 自动兜底）
 - 搜索：`?ac=detail&at=json&wd=关键词`

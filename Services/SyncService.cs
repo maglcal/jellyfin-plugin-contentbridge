@@ -18,14 +18,24 @@ namespace Jellyfin.Plugin.ContentBridge.Services
         private const string ManifestFileName = ".contentbridge-manifest.json";
 
         private readonly ContentApiClient _client;
+        private readonly FeedClient _feed;
         private readonly StrmLibraryWriter _writer;
         private readonly ILogger<SyncService> _logger;
 
-        public SyncService(ContentApiClient client, StrmLibraryWriter writer, ILogger<SyncService> logger)
+        public SyncService(ContentApiClient client, FeedClient feed, StrmLibraryWriter writer, ILogger<SyncService> logger)
         {
             _client = client;
+            _feed = feed;
             _writer = writer;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Whether a source speaks the ContentBridge Feed standard instead of MaccCMS.
+        /// </summary>
+        public static bool IsFeedSource(SourceConfig source)
+        {
+            return string.Equals(source?.Type, "feed", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -89,7 +99,10 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             }
 
             Directory.CreateDirectory(config.LibraryRoot);
-            var entry = await _client.GetDetailAsync(source, vodId, ct).ConfigureAwait(false);
+            var entry = IsFeedSource(source)
+                ? (await _feed.LoadAsync(source, ct).ConfigureAwait(false))
+                    .FirstOrDefault(e => string.Equals(e.Id, vodId, StringComparison.Ordinal))
+                : await _client.GetDetailAsync(source, vodId, ct).ConfigureAwait(false);
             if (entry == null)
             {
                 throw new InvalidOperationException("接口未返回该条目");
@@ -105,6 +118,21 @@ namespace Jellyfin.Plugin.ContentBridge.Services
         private async Task SyncSourceAsync(SourceConfig source, PluginConfiguration config, ManifestData manifest, CancellationToken ct)
         {
             var maxItems = source.MaxItems > 0 ? source.MaxItems : 20;
+
+            if (IsFeedSource(source))
+            {
+                var entries = (await _feed.LoadAsync(source, ct).ConfigureAwait(false)).Take(maxItems).ToList();
+                foreach (var entry in entries)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var written = await _writer.WriteAsync(entry, source, config, ct).ConfigureAwait(false);
+                    UpdateManifest(manifest, source.Name, entry.Id, written);
+                }
+
+                _logger.LogInformation("ContentBridge: feed source {Source} synced {Count} title(s)", source.Name, entries.Count);
+                return;
+            }
+
             var fetched = 0;
             var pageCount = 1;
 
@@ -149,7 +177,9 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 HashSet<string> liveIds;
                 try
                 {
-                    liveIds = await _client.GetAllIdsAsync(source, ct).ConfigureAwait(false);
+                    liveIds = IsFeedSource(source)
+                        ? new HashSet<string>((await _feed.LoadAsync(source, ct).ConfigureAwait(false)).Select(e => e.Id), StringComparer.Ordinal)
+                        : await _client.GetAllIdsAsync(source, ct).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
