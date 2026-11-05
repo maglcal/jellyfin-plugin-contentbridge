@@ -1,0 +1,71 @@
+using System.Collections.Generic;
+
+namespace Jellyfin.Plugin.ContentBridge.Models
+{
+    /// <summary>
+    /// One title returned by a content source.
+    /// </summary>
+    public sealed class VodEntry
+    {
+        public string Id { get; set; } = string.Empty;
+
+        public string Name { get; set; } = string.Empty;
+
+        public string TypeName { get; set; } = string.Empty;
+
+        public string Pic { get; set; } = string.Empty;
+
+        public string Remarks { get; set; } = string.Empty;
+
+        public string Year { get; set; } = string.Empty;
+
+        public string Area { get; set; } = string.Empty;
+
+        public string Lang { get; set; } = string.Empty;
+
+        public string Actor { get; set; } = string.Empty;
+
+        public string Director { get; set; } = string.Empty;
+
+        public string Content { get; set; } = string.Empty;
+
+        public string Score { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets the play lines. Each line (flag) contains its own episode list.
+        /// </summary>
+        public List<PlaySource> PlaySources { get; set; } = new List<PlaySource>();
+    }
+
+    /// <summary>
+    /// A play line ("vod_play_from" / "vod_play_url" pair).
+    /// </summary>
+    public sealed class PlaySource
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public List<PlayEpisode> Episodes { get; set; } = new List<PlayEpisode>();
+    }
+
+    /// <summary>
+    /// One episode / play entry.
+    /// </summary>
+    public sealed class PlayEpisode
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string Url { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Result page of a list query.
+    /// </summary>
+    public sealed class VodPage
+    {
+        public int Page { get; set; } = 1;
+
+        public int PageCount { get; set; } = 1;
+
+        public List<VodEntry> Items { get; set; } = new List<VodEntry>();
+    }
+}

@@ -1,0 +1,253 @@
+<div id="contentbridge-config-page" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-select">
+    <div data-role="content">
+        <div class="content-primary">
+            <form id="contentbridge-config-form">
+                <div class="sectionTitleContainer flex align-items-center">
+                    <h2 class="sectionTitle">ContentBridge</h2>
+                </div>
+                <p style="color:#aaa">把外部内容接口的条目以 .strm 虚拟条目的形式注入媒体库。先把「媒体库根目录」加为 Jellyfin 的混合媒体库，再在这里配置数据源。</p>
+
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="cbLibraryRoot" label="媒体库根目录" />
+                    <div class="fieldDescription">生成 .strm / .nfo / 海报的目录，例如 /media/online 或 D:\media\online</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="cbPreferredQuality" label="播放线路偏好" />
+                    <div class="fieldDescription">多条播放线路时优先选中名称或地址包含此关键词的线路，例如 m3u8</div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input type="checkbox" is="emby-checkbox" id="cbWriteNfo" /><span>写入 NFO 元数据</span></label>
+                    <div class="fieldDescription">关掉则只生成 .strm，靠 Jellyfin 自己刮削</div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input type="checkbox" is="emby-checkbox" id="cbDownloadImages" /><span>下载海报</span></label>
+                    <div class="fieldDescription">已存在的海报不会重复下载</div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input type="checkbox" is="emby-checkbox" id="cbCleanupRemoved" /><span>清理已下架条目</span></label>
+                    <div class="fieldDescription">同步时删除数据源上已不存在的条目（默认关，避免误删）</div>
+                </div>
+
+                <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
+                    <h2 class="sectionTitle">数据源</h2>
+                </div>
+                <div id="cbSources"></div>
+                <button is="emby-button" type="button" class="raised" id="cbAddSource"><span>添加数据源</span></button>
+
+                <div class="verticalSection">
+                    <button is="emby-button" type="submit" class="raised button-submit block"><span>保存</span></button>
+                    <button is="emby-button" type="button" class="raised block" id="cbSyncNow" style="margin-top:1em"><span>立即同步</span></button>
+                    <div class="fieldDescription" id="cbStatus" style="margin-top:0.8em"></div>
+                </div>
+            </form>
+
+            <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
+                <h2 class="sectionTitle">搜索并入库</h2>
+            </div>
+            <div class="inputContainer">
+                <select is="emby-select" id="cbSearchSource" label="数据源"></select>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" type="text" id="cbSearchKeyword" label="关键词" />
+            </div>
+            <button is="emby-button" type="button" class="raised" id="cbSearchBtn"><span>搜索</span></button>
+            <div id="cbSearchResults" style="margin-top:1em"></div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = 'b42fcd11-31f8-40fb-b605-77fc7b182edc';
+            var page = document.querySelector('#contentbridge-config-page');
+            var config = null;
+
+            function status(text) {
+                page.querySelector('#cbStatus').textContent = text || '';
+            }
+
+            // normalize ApiClient.ajax results across apiclient versions
+            function normalize(r) {
+                if (r == null) return null;
+                if (typeof r === 'string') { try { return JSON.parse(r); } catch (e) { return null; } }
+                if (typeof r.json === 'function') return r.json().then(function (j) { return j; });
+                if (r.response != null && typeof r.response === 'object') return r.response;
+                return r;
+            }
+
+            function apiGet(path, params) {
+                return Promise.resolve(ApiClient.ajax({
+                    type: 'GET',
+                    url: ApiClient.getUrl(path, params),
+                    dataType: 'json'
+                })).then(normalize);
+            }
+
+            function apiPost(path, body) {
+                return Promise.resolve(ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl(path),
+                    data: body ? JSON.stringify(body) : null,
+                    contentType: 'application/json',
+                    dataType: 'json'
+                })).then(normalize);
+            }
+
+            function sourceRow(s) {
+                var div = document.createElement('div');
+                div.className = 'verticalSection';
+                div.style.cssText = 'border:1px solid #444;border-radius:6px;padding:1em;margin-bottom:1em';
+                div.innerHTML =
+                    '<div class="inputContainer"><input is="emby-input" type="text" class="cbSrcName" label="名称" /></div>' +
+                    '<div class="inputContainer"><input is="emby-input" type="text" class="cbSrcUrl" label="接口地址（api.php/provide/vod/）" /></div>' +
+                    '<div class="inputContainer"><input is="emby-input" type="number" class="cbSrcType" label="分类 ID（0 = 全部）" /></div>' +
+                    '<div class="inputContainer"><input is="emby-input" type="number" class="cbSrcMax" label="每次同步条数" /></div>' +
+                    '<div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="cbSrcEnabled" /><span>启用</span></label></div>' +
+                    '<button is="emby-button" type="button" class="raised cbSrcRemove"><span>删除</span></button>';
+                div.querySelector('.cbSrcName').value = s.Name || '';
+                div.querySelector('.cbSrcUrl').value = s.ApiUrl || '';
+                div.querySelector('.cbSrcType').value = s.TypeId != null ? s.TypeId : 0;
+                div.querySelector('.cbSrcMax').value = s.MaxItems != null ? s.MaxItems : 20;
+                div.querySelector('.cbSrcEnabled').checked = s.Enabled !== false;
+                div.querySelector('.cbSrcRemove').addEventListener('click', function () {
+                    div.remove();
+                });
+                return div;
+            }
+
+            function renderSources(sources) {
+                var container = page.querySelector('#cbSources');
+                container.innerHTML = '';
+                (sources || []).forEach(function (s) {
+                    container.appendChild(sourceRow(s));
+                });
+                refreshSourceSelect();
+            }
+
+            function collectSources() {
+                var sources = [];
+                page.querySelectorAll('#cbSources > div').forEach(function (div) {
+                    sources.push({
+                        Name: div.querySelector('.cbSrcName').value.trim(),
+                        ApiUrl: div.querySelector('.cbSrcUrl').value.trim(),
+                        TypeId: parseInt(div.querySelector('.cbSrcType').value, 10) || 0,
+                        MaxItems: parseInt(div.querySelector('.cbSrcMax').value, 10) || 20,
+                        Enabled: div.querySelector('.cbSrcEnabled').checked
+                    });
+                });
+                return sources;
+            }
+
+            function refreshSourceSelect() {
+                var select = page.querySelector('#cbSearchSource');
+                var current = select.value;
+                select.innerHTML = '';
+                collectSources().forEach(function (s) {
+                    if (!s.Name) return;
+                    var opt = document.createElement('option');
+                    opt.value = s.Name;
+                    opt.textContent = s.Name;
+                    select.appendChild(opt);
+                });
+                if (current) select.value = current;
+            }
+
+            function fillForm(cfg) {
+                config = cfg || {};
+                page.querySelector('#cbLibraryRoot').value = config.LibraryRoot || '';
+                page.querySelector('#cbPreferredQuality').value = config.PreferredQuality || 'm3u8';
+                page.querySelector('#cbWriteNfo').checked = config.WriteNfo !== false;
+                page.querySelector('#cbDownloadImages').checked = config.DownloadImages !== false;
+                page.querySelector('#cbCleanupRemoved').checked = config.CleanupRemoved === true;
+                renderSources(config.Sources || []);
+            }
+
+            page.querySelector('#contentbridge-config-form').addEventListener('submit', function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                config = config || {};
+                config.LibraryRoot = page.querySelector('#cbLibraryRoot').value.trim();
+                config.PreferredQuality = page.querySelector('#cbPreferredQuality').value.trim();
+                config.WriteNfo = page.querySelector('#cbWriteNfo').checked;
+                config.DownloadImages = page.querySelector('#cbDownloadImages').checked;
+                config.CleanupRemoved = page.querySelector('#cbCleanupRemoved').checked;
+                config.Sources = collectSources();
+                ApiClient.updatePluginConfiguration(pluginId, config).then(function () {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.processPluginConfigurationUpdateResult();
+                    status('已保存');
+                    refreshSourceSelect();
+                }).catch(function () {
+                    Dashboard.hideLoadingMsg();
+                    status('保存失败');
+                });
+            });
+
+            page.querySelector('#cbAddSource').addEventListener('click', function () {
+                page.querySelector('#cbSources').appendChild(sourceRow({
+                    Name: '', ApiUrl: '', TypeId: 0, MaxItems: 20, Enabled: true
+                }));
+            });
+
+            page.querySelector('#cbSyncNow').addEventListener('click', function () {
+                status('同步已启动，进度见 控制台 → 计划任务');
+                apiPost('ContentBridge/sync').catch(function () { });
+            });
+
+            page.querySelector('#cbSearchBtn').addEventListener('click', function () {
+                var source = page.querySelector('#cbSearchSource').value;
+                var keyword = page.querySelector('#cbSearchKeyword').value.trim();
+                var results = page.querySelector('#cbSearchResults');
+                results.innerHTML = '';
+                if (!source || !keyword) {
+                    status('请选择数据源并输入关键词');
+                    return;
+                }
+                Dashboard.showLoadingMsg();
+                apiGet('ContentBridge/search', { source: source, keyword: keyword }).then(function (list) {
+                    Dashboard.hideLoadingMsg();
+                    (list || []).slice(0, 30).forEach(function (item) {
+                        var row = document.createElement('div');
+                        row.style.cssText = 'display:flex;align-items:center;gap:1em;padding:0.6em 0;border-bottom:1px solid #333';
+                        var label = document.createElement('span');
+                        label.style.flex = '1';
+                        label.textContent = (item.Name || '') + (item.Remarks ? ' · ' + item.Remarks : '') + (item.Year ? ' (' + item.Year + ')' : '');
+                        var btn = document.createElement('button');
+                        btn.setAttribute('is', 'emby-button');
+                        btn.type = 'button';
+                        btn.className = 'raised';
+                        btn.innerHTML = '<span>入库</span>';
+                        btn.addEventListener('click', function () {
+                            Dashboard.showLoadingMsg();
+                            apiPost('ContentBridge/add', { Source: source, VodId: item.Id }).then(function (res) {
+                                Dashboard.hideLoadingMsg();
+                                status('已入库：' + ((res && res.Files && res.Files.length) || 0) + ' 个文件，稍后自动刮削');
+                            }).catch(function (err) {
+                                Dashboard.hideLoadingMsg();
+                                status('入库失败：' + (err || '未知错误'));
+                            });
+                        });
+                        row.appendChild(label);
+                        row.appendChild(btn);
+                        results.appendChild(row);
+                    });
+                    if (!results.childNodes.length) {
+                        results.textContent = '无结果';
+                    }
+                }).catch(function () {
+                    Dashboard.hideLoadingMsg();
+                    status('搜索失败，检查接口地址与网络');
+                });
+            });
+
+            page.addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
+                    Dashboard.hideLoadingMsg();
+                    fillForm(cfg);
+                }).catch(function () {
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+        })();
+    </script>
+</div>
