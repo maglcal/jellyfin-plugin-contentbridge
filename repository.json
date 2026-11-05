@@ -1,0 +1,20 @@
+[
+  {
+    "category": "General",
+    "name": "ContentBridge",
+    "owner": "maglcal",
+    "guid": "b42fcd11-31f8-40fb-b605-77fc7b182edc",
+    "description": "Inject external content-source feeds into the Jellyfin media library as .strm virtual entries (NFO + poster), with scheduled sync, one-click search-and-add, and MaccCMS/Hailuo-style provide-vod API support.",
+    "overview": "Inject external content sources into your Jellyfin library",
+    "versions": [
+      {
+        "version": "0.1.0.0",
+        "changelog": "Initial release: sync content-source feeds into the library as .strm virtual entries; config page with search-and-add; scheduled sync; movie + series layout.",
+        "sourceUrl": "https://github.com/maglcal/jellyfin-plugin-contentbridge/releases/download/v0.1.0/contentbridge_0.1.0.0.zip",
+        "checksum": "41880a0fa6292fa0145f1a538de013f9",
+        "targetAbi": "10.11.0.0",
+        "timestamp": "2026-11-05T06:23:07Z"
+      }
+    ]
+  }
+]

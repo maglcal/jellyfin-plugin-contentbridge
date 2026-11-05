@@ -24,7 +24,21 @@ Jellyfin 混合媒体库（Movies + Shows）→ 海报墙 / 搜索 / 全客户�
 
 ## 安装
 
-1. 构建（或直接用已构建好的 `bin/Release/net9.0/Jellyfin.Plugin.ContentBridge.dll`）：
+### 方式一：插件存储库安装（推荐）
+
+1. Jellyfin 控制台 → 插件 → 存储库 → 添加，填入：
+
+   ```
+   https://raw.githubusercontent.com/maglcal/jellyfin-plugin-contentbridge/main/repository.json
+   ```
+
+2. 插件 → 目录 → 找到 ContentBridge → 安装，重启 Jellyfin。
+
+后续发新版本时目录里会直接提示更新，不用手动换 DLL。
+
+### 方式二：手动安装
+
+1. 从 [Releases](https://github.com/maglcal/jellyfin-plugin-contentbridge/releases) 下载 `contentbridge_x.y.z.zip`（或直接拿 `Jellyfin.Plugin.ContentBridge.dll`）：
 
    ```bash
    dotnet build -c Release
