@@ -15,6 +15,7 @@ namespace Jellyfin.Plugin.ContentBridge
         {
             serviceCollection.AddSingleton<ContentApiClient>();
             serviceCollection.AddSingleton<StrmLibraryWriter>();
+            serviceCollection.AddSingleton<StreamProxyService>();
             serviceCollection.AddSingleton<SyncService>();
             serviceCollection.AddSingleton<MediaBrowser.Model.Tasks.IScheduledTask, Tasks.SyncContentTask>();
         }

@@ -27,10 +27,12 @@ namespace Jellyfin.Plugin.ContentBridge.Services
         private static readonly Regex HtmlTagRegex = new Regex("<[^>]+>", RegexOptions.Compiled);
 
         private readonly ILogger<StrmLibraryWriter> _logger;
+        private readonly StreamProxyService _proxy;
 
-        public StrmLibraryWriter(ILogger<StrmLibraryWriter> logger)
+        public StrmLibraryWriter(ILogger<StrmLibraryWriter> logger, StreamProxyService proxy)
         {
             _logger = logger;
+            _proxy = proxy;
         }
 
         /// <summary>
@@ -57,6 +59,8 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             var sourceRoot = Path.Combine(config.LibraryRoot, Sanitize(source.Name));
             var titleRoot = Path.Combine(sourceRoot, folderName);
 
+            string Resolve(string url) => source.UseProxy ? _proxy.BuildProxyUrl(source.Name, url) : url;
+
             Directory.CreateDirectory(titleRoot);
 
             if (playLine.Episodes.Count == 1)
@@ -65,7 +69,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 var strmName = $"{folderName}.strm";
                 await File.WriteAllTextAsync(
                     Path.Combine(titleRoot, strmName),
-                    playLine.Episodes[0].Url + "\n",
+                    Resolve(playLine.Episodes[0].Url) + "\n",
                     new UTF8Encoding(false),
                     ct).ConfigureAwait(false);
                 written.Add(Rel(config.LibraryRoot, Path.Combine(titleRoot, strmName)));
@@ -107,7 +111,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                     var strmPath = Path.Combine(seasonDir, baseName + ".strm");
                     await File.WriteAllTextAsync(
                         strmPath,
-                        episode.Url + "\n",
+                        Resolve(episode.Url) + "\n",
                         new UTF8Encoding(false),
                         ct).ConfigureAwait(false);
                     written.Add(Rel(config.LibraryRoot, strmPath));

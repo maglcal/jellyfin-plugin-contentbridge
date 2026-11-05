@@ -15,6 +15,10 @@
                     <input is="emby-input" type="text" id="cbPreferredQuality" label="播放线路偏好" />
                     <div class="fieldDescription">多条播放线路时优先选中名称或地址包含此关键词的线路，例如 m3u8</div>
                 </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="cbProxyBaseUrl" label="代理基础地址（可选）" />
+                    <div class="fieldDescription">生成代理播放链接时使用的对外地址，例如 http://192.168.1.10:8096 或 https://tv.example.com。留空自动取局域网地址；用域名访问 Jellyfin 时必填</div>
+                </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label><input type="checkbox" is="emby-checkbox" id="cbWriteNfo" /><span>写入 NFO 元数据</span></label>
                     <div class="fieldDescription">关掉则只生成 .strm，靠 Jellyfin 自己刮削</div>
@@ -101,12 +105,18 @@
                     '<div class="inputContainer"><input is="emby-input" type="text" class="cbSrcUrl" label="接口地址（api.php/provide/vod/）" /></div>' +
                     '<div class="inputContainer"><input is="emby-input" type="number" class="cbSrcType" label="分类 ID（0 = 全部）" /></div>' +
                     '<div class="inputContainer"><input is="emby-input" type="number" class="cbSrcMax" label="每次同步条数" /></div>' +
+                    '<div class="checkboxContainer checkboxContainer-withDescription"><label><input type="checkbox" is="emby-checkbox" class="cbSrcUseProxy" /><span>走本地代理</span></label><div class="fieldDescription">播放地址需要校验请求头（Referer/UA）时开启，.strm 会写代理链接</div></div>' +
+                    '<div class="inputContainer"><input is="emby-input" type="text" class="cbSrcUa" label="User-Agent（代理模式）" /></div>' +
+                    '<div class="inputContainer"><input is="emby-input" type="text" class="cbSrcRef" label="Referer（代理模式）" /></div>' +
                     '<div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="cbSrcEnabled" /><span>启用</span></label></div>' +
                     '<button is="emby-button" type="button" class="raised cbSrcRemove"><span>删除</span></button>';
                 div.querySelector('.cbSrcName').value = s.Name || '';
                 div.querySelector('.cbSrcUrl').value = s.ApiUrl || '';
                 div.querySelector('.cbSrcType').value = s.TypeId != null ? s.TypeId : 0;
                 div.querySelector('.cbSrcMax').value = s.MaxItems != null ? s.MaxItems : 20;
+                div.querySelector('.cbSrcUseProxy').checked = s.UseProxy === true;
+                div.querySelector('.cbSrcUa').value = s.UserAgent || '';
+                div.querySelector('.cbSrcRef').value = s.Referer || '';
                 div.querySelector('.cbSrcEnabled').checked = s.Enabled !== false;
                 div.querySelector('.cbSrcRemove').addEventListener('click', function () {
                     div.remove();
@@ -131,6 +141,9 @@
                         ApiUrl: div.querySelector('.cbSrcUrl').value.trim(),
                         TypeId: parseInt(div.querySelector('.cbSrcType').value, 10) || 0,
                         MaxItems: parseInt(div.querySelector('.cbSrcMax').value, 10) || 20,
+                        UseProxy: div.querySelector('.cbSrcUseProxy').checked,
+                        UserAgent: div.querySelector('.cbSrcUa').value.trim(),
+                        Referer: div.querySelector('.cbSrcRef').value.trim(),
                         Enabled: div.querySelector('.cbSrcEnabled').checked
                     });
                 });
@@ -155,6 +168,7 @@
                 config = cfg || {};
                 page.querySelector('#cbLibraryRoot').value = config.LibraryRoot || '';
                 page.querySelector('#cbPreferredQuality').value = config.PreferredQuality || 'm3u8';
+                page.querySelector('#cbProxyBaseUrl').value = config.ProxyBaseUrl || '';
                 page.querySelector('#cbWriteNfo').checked = config.WriteNfo !== false;
                 page.querySelector('#cbDownloadImages').checked = config.DownloadImages !== false;
                 page.querySelector('#cbCleanupRemoved').checked = config.CleanupRemoved === true;
@@ -167,6 +181,7 @@
                 config = config || {};
                 config.LibraryRoot = page.querySelector('#cbLibraryRoot').value.trim();
                 config.PreferredQuality = page.querySelector('#cbPreferredQuality').value.trim();
+                config.ProxyBaseUrl = page.querySelector('#cbProxyBaseUrl').value.trim();
                 config.WriteNfo = page.querySelector('#cbWriteNfo').checked;
                 config.DownloadImages = page.querySelector('#cbDownloadImages').checked;
                 config.CleanupRemoved = page.querySelector('#cbCleanupRemoved').checked;

@@ -37,6 +37,18 @@ namespace Jellyfin.Plugin.ContentBridge
         public string PreferredQuality { get; set; } = "m3u8";
 
         /// <summary>
+        /// Gets or sets the public base url used in generated proxy links (e.g. http://192.168.1.10:8096).
+        /// Leave empty to auto-detect a local url. Fill this in when clients reach Jellyfin via a
+        /// public domain or a different address than the server's LAN ip.
+        /// </summary>
+        public string ProxyBaseUrl { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the access key embedded in generated proxy links (auto-generated on first use).
+        /// </summary>
+        public string ProxyKey { get; set; } = string.Empty;
+
+        /// <summary>
         /// Gets or sets the configured content sources.
         /// </summary>
         public List<SourceConfig> Sources { get; set; } = new List<SourceConfig>();
@@ -61,5 +73,17 @@ namespace Jellyfin.Plugin.ContentBridge
 
         /// <summary>Gets or sets the max number of items pulled per sync for this source.</summary>
         public int MaxItems { get; set; } = 20;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether generated .strm links go through the local
+        /// stream proxy (needed when the source requires a User-Agent or Referer header).
+        /// </summary>
+        public bool UseProxy { get; set; } = false;
+
+        /// <summary>Gets or sets the User-Agent header sent to this source (proxy mode only).</summary>
+        public string UserAgent { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets the Referer header sent to this source (proxy mode only).</summary>
+        public string Referer { get; set; } = string.Empty;
     }
 }
