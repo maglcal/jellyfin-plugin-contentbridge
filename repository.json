@@ -4,7 +4,7 @@
     "name": "ContentBridge",
     "owner": "maglcal",
     "guid": "b42fcd11-31f8-40fb-b605-77fc7b182edc",
-    "description": "Inject external content-source feeds into the Jellyfin media library as .strm virtual entries (NFO + poster), with scheduled sync, one-click search-and-add, and MaccCMS/Hailuo-style provide-vod API support.",
+    "description": "Inject external content-source feeds into the Jellyfin media library as .strm virtual entries (NFO + poster), with scheduled sync, one-click search-and-add, and MaccCMS/Hailuo-style provide-vod API support. by 丶许诺 (maglcal)",
     "overview": "Inject external content sources into your Jellyfin library",
     "versions": [
       {
