@@ -85,16 +85,12 @@ Jellyfin 混合媒体库（Movies + Shows）→ 海报墙 / 搜索 / 全客户�
 
 ## 版本适配
 
-默认目标 **Jellyfin 10.11.x（.NET 9）**。适配 10.10 只改 csproj 两处：
+**开箱支持 Jellyfin 10.10.x 与 10.11.x**（一个构建通吃）：
 
-```xml
-<TargetFramework>net8.0</TargetFramework>
-<PackageReference Include="Jellyfin.Controller" Version="10.10.7" />
-<PackageReference Include="Jellyfin.Common" Version="10.10.7" />
-```
-
-另注意：10.10 及以下计划任务触发器用 `TaskTriggerInfo.TriggerInterval`（字符串常量），
-10.11 用 `TaskTriggerInfoType.IntervalTrigger`（枚举），改一下 `Tasks/SyncContentTask.cs` 一行。
+- 目标框架 net8.0，引用 Jellyfin 10.10.7 程序集，在 10.11.x（.NET 9）上同样正常运行；
+- 10.10 与 10.11 的 `TaskTriggerInfo.Type` 类型不同（字符串 vs `TaskTriggerInfoType` 枚举），
+  `Tasks/SyncContentTask.cs` 用反射赋值兼容两代，无需手动改代码；
+- 插件 meta.json 的 `targetAbi` 为 `10.10.0.0`，10.10 及以上都能从存储库看到并安装。
 
 ## 已知限制
 

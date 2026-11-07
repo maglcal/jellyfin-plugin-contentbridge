@@ -40,14 +40,25 @@ namespace Jellyfin.Plugin.ContentBridge.Tasks
         /// <inheritdoc />
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
-            return new[]
+            var trigger = new TaskTriggerInfo
             {
-                new TaskTriggerInfo
-                {
-                    Type = TaskTriggerInfoType.IntervalTrigger,
-                    IntervalTicks = TimeSpan.FromHours(6).Ticks
-                }
+                IntervalTicks = TimeSpan.FromHours(6).Ticks
             };
+
+            // Jellyfin 10.11 changed TaskTriggerInfo.Type from a string ("IntervalTrigger")
+            // to the TaskTriggerInfoType enum. Assign it reflectively so that this single
+            // build runs correctly on both 10.10.x and 10.11.x servers.
+            var typeProperty = typeof(TaskTriggerInfo).GetProperty("Type");
+            if (typeProperty?.PropertyType == typeof(string))
+            {
+                typeProperty.SetValue(trigger, "IntervalTrigger");
+            }
+            else if (typeProperty != null)
+            {
+                typeProperty.SetValue(trigger, Enum.Parse(typeProperty.PropertyType, "IntervalTrigger"));
+            }
+
+            return new[] { trigger };
         }
     }
 }
