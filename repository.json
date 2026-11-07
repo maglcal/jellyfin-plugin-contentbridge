@@ -23,6 +23,14 @@
         "checksum": "7e7200082f00477bc11615c266277d07",
         "targetAbi": "10.10.0.0",
         "timestamp": "2026-11-07T05:41:58Z"
+      },
+      {
+        "version": "0.3.0.0",
+        "changelog": "Plugin icon in the catalog and the installed plugins list; ContentBridge settings entry in the dashboard sidebar; auto-sync schedule (manual / hourly / 6h / 12h / daily / weekly) configurable from the plugin config page, shared with the sync scheduled task; developer name updated to Xunuo.",
+        "sourceUrl": "https://github.com/maglcal/jellyfin-plugin-contentbridge/releases/download/v0.3.0/contentbridge_0.3.0.0.zip",
+        "checksum": "5ff686749f7219bfbdea2a6587a34f35",
+        "targetAbi": "10.10.0.0",
+        "timestamp": "2026-11-07T06:44:20Z"
       }
     ]
   }
