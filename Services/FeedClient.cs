@@ -205,11 +205,19 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                             }
 
                             int? number = null;
-                            if (ep.TryGetProperty("number", out var n)
-                                && n.ValueKind == JsonValueKind.Number
-                                && n.TryGetInt32(out var parsed))
+                            if (ep.TryGetProperty("number", out var n))
                             {
-                                number = parsed;
+                                if (n.ValueKind == JsonValueKind.Number && n.TryGetInt32(out var parsed))
+                                {
+                                    number = parsed;
+                                }
+                                else if (n.ValueKind == JsonValueKind.String
+                                         && int.TryParse(n.GetString(), out parsed)
+                                         && parsed > 0)
+                                {
+                                    // tolerant of numeric strings ("3") — many sources emit them
+                                    number = parsed;
+                                }
                             }
 
                             source.Episodes.Add(new PlayEpisode

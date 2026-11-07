@@ -49,6 +49,7 @@
 ```python
 FEED_OUT   = "feed-output/my-feed.json"   # 输出的 feed 文件放哪
 SOURCE_API = ""                           # 你的数据源接口地址（留空 = 用内置演示数据）
+BASE_URL   = ""                           # 播放地址是相对路径时的拼接基地址（留空 = 用 SOURCE_API）
 CRAWLER_NAME    = "my-crawler"            # 你的采集程序名（会写进 feed 的 generator 字段）
 CRAWLER_VERSION = "1.0.0"
 DELTA_MODE  = False                       # True = 增量模式（见 §4）
@@ -74,29 +75,49 @@ def fetch_raw_items():
 
 ### 3.3 映射字段：翻译成标准格式
 
-数据源的字段名（`name`/`vod_name`/`title`…）随你叫什么，**统一翻译成 FEED-SPEC 的字段**：
+数据源的字段名（`name`/`vod_name`/`title`…）随你叫什么，**统一翻译成 FEED-SPEC 的字段**。
+模板用 `pick()` 做多候选兜底——字段名叫什么都不怕，也**绝不能写死 `raw["name"]`**（字段对不上就取错值或直接报错）：
 
 ```python
 def map_item(raw):
-    return {
-        "id": str(raw["id"]),                # 全源唯一、每次运行不变（最重要！）
-        "title": raw["name"],
-        "year": raw.get("year", ""),
-        "type": "movie",                     # movie / series，不确定就省略
-        "poster": raw.get("cover", ""),
-        "summary": raw.get("intro", ""),
-        "score": raw.get("score", ""),
-        "updated": raw.get("updated", ""),   # 条目级变更时间戳（见 §4）
-        "playLines": [
-            {
-                "name": "m3u8",
-                "episodes": [
-                    {"name": "正片", "url": raw["play_url"]}
-                ],
-            }
-        ],
+    item_id = pick(raw, "id", "vod_id")                       # 候选都列出来，对上哪个用哪个
+    title   = pick(raw, "title", "name", "vod_name", "vod_title")
+    if not item_id or not title:
+        return None                                          # 缺 id / 标题的条目跳过
+
+    item = {
+        "id": item_id,                                       # 全源唯一、每次运行不变（最重要！）
+        "title": title,
+        "year": pick(raw, "year", "vod_year"),
+        "poster": pick(raw, "poster", "cover", "pic", "vod_pic"),
+        "summary": pick(raw, "summary", "intro", "content", "vod_content"),
+        "score": pick(raw, "score", "vod_score"),
     }
+
+    # 播放数据两种形态：结构化分集列表，或单条/复合播放串（见下表）
+    if raw.get("episodes"):
+        item["type"] = "series"
+        item["playLines"] = [ ...按分集逐条映射 name/url/number... ]
+    else:
+        item["playLines"] = parse_play_lines(
+            pick(raw, "play_url", "vod_play_url", "url", "vod_url"),
+            pick(raw, "play_from", "vod_play_from"),
+        )
+        item["type"] = "series" if 多集 else "movie"
+
+    item["updated"] = change_stamp(raw, item)                # 条目级变更戳（见 §4）
+    return item
 ```
+
+**播放地址有三种形态**，模板的 `parse_play_lines()` 通吃：
+
+| 形态 | 例子 | 处理 |
+|---|---|---|
+| 完整直链 | `https://cdn.x.com/index.m3u8` | 原样用 |
+| 相对地址 | `/upload/index.m3u8` | 按 `BASE_URL` 拼成完整地址 |
+| 复合播放串 | `第1集$url1#第2集$url2$$$线路2#第1集$url3` | 拆成多条 playLines（`$` 分名址、`#` 分集、`$$$` 分线路），线路名取 `vod_play_from` |
+
+**相对地址一定要拼全**：.strm 里只能放完整 `http(s)://` 地址，相对路径在 Jellyfin 里播不了。模板拼不出来的地址会跳过并打警告——看到警告先去补 `BASE_URL`。
 
 字段全部含义见 [FEED-SPEC.md §3](../FEED-SPEC.md)。**playLines 是必填的**——没有可播放地址的条目会被插件跳过。
 
@@ -193,13 +214,16 @@ schtasks /create /tn "ContentBridge-Crawler" /tr "python C:\crawler\crawler-temp
 
 | 坑 | 症状 | 解法 |
 |---|---|---|
+| 字段名对不上（name / title / vod_name） | 标题为空、串位，或脚本报 KeyError | 用 `pick()` 多候选兜底，别写死 `raw["name"]` |
+| 复合播放串没拆（`名称$url#…$$$…`） | .strm 里是一整串垃圾地址，无法播放 | 用 `parse_play_lines()` 拆线路和分集 |
+| 相对地址没拼全就写进 feed | 条目有了但无法播放 | 填 `BASE_URL`，模板自动补全；自检 url 必须 `http(s)://` 开头 |
 | 编码不是 UTF-8 | 中文乱码、JSON 解析报错 | 所有文件读写显式 `encoding="utf-8"` |
 | id 不稳定（每次运行都变） | 清理/墓碑对不上，条目重复入库 | id 用数据源的固定主键，别用随机数/时间戳 |
 | url 有时效 | 几天后播放 403/404 | 定期重跑采集更新 url；或在数据源开「走本地代理」 |
 | 播放要 Referer/UA | Jellyfin 直接播报错 | 不用改 url，插件数据源开「走本地代理」填请求头 |
 | delta 源开了清理 | 正常条目被批量误删（不会发生：插件有硬保护） | 知道这层语义即可，插件自动忽略 |
 | JSON 逗号/引号手写出错 | 同步日志报解析失败 | 用 Python 的 `json.dump` 写文件，别手拼字符串 |
-| 分集编号乱 | `S01E01` 排序错乱 | episodes 里给 `number` 整数字段 |
+| 分集编号乱 | `S01E01` 排序错乱 | episodes 里给 `number` 整数字段；不给也会从「第N集/EP N/纯数字」解析 |
 
 ## 8. 自测清单
 
@@ -207,6 +231,8 @@ schtasks /create /tn "ContentBridge-Crawler" /tr "python C:\crawler\crawler-temp
 
 - [ ] 模板演示模式跑通（`python crawler-template.py` 出文件）
 - [ ] 换上真实数据源后，抽查 3 条的 id / title / url 正确
+- [ ] 标题只放片名（不带年份、不带 HTML 标签），年份放 `year` 字段
+- [ ] 输出的 url 全部是完整 `http(s)://` 直链（相对路径已用 BASE_URL 拼全）
 - [ ] 连续跑两次，第二次的 `updated` 没变化（不会触发无谓重写）
 - [ ] 删掉一条数据再跑，feed 里出现它的墓碑（增量模式）或它从清单消失（全量模式）
 - [ ] 插件「立即同步」后媒体库条目正确，Jellyfin 日志无报错

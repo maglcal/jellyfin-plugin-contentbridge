@@ -20,8 +20,22 @@ namespace Jellyfin.Plugin.ContentBridge.Services
     {
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
 
-        private static readonly Regex EpisodeNumberRegex = new Regex(
-            @"(?:第\s*(\d+)\s*[集话話回])|(?:[Ee][Pp]?\s*[-_]?\s*(\d+))|(?:^|\D)(\d{1,4})(?:\D|$)",
+        // Explicit episode markers, matched anywhere in the name and in priority order,
+        // so noise like a year ("2024年…第3集") or a resolution ("1080P正片") never wins.
+        private static readonly Regex EpisodeKeywordRegex = new Regex(
+            @"第?\s*(\d{1,4})\s*[集话話回]",
+            RegexOptions.Compiled);
+
+        private static readonly Regex EpisodeEpRegex = new Regex(
+            @"[Ee][Pp]?(?:isode)?\s*[-_.]?\s*(\d{1,4})",
+            RegexOptions.Compiled);
+
+        private static readonly Regex EpisodeLeadingIndexRegex = new Regex(
+            @"^\s*(\d{1,4})\s*[\.、，,_\-—\)）\]]",
+            RegexOptions.Compiled);
+
+        private static readonly Regex EpisodeWholeNumberRegex = new Regex(
+            @"^\s*(\d{1,4})\s*[\.、。]?\s*$",
             RegexOptions.Compiled);
 
         private static readonly Regex HtmlTagRegex = new Regex("<[^>]+>", RegexOptions.Compiled);
@@ -46,15 +60,46 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             CancellationToken ct)
         {
             var written = new List<string>();
-            var playLine = PickPlaySource(entry, config.PreferredQuality);
-            if (playLine == null || playLine.Episodes.Count == 0)
+
+            // drop episodes whose urls can never play (not absolute http/https) before anything else
+            var playableSources = new List<PlaySource>();
+            var droppedUrls = 0;
+            foreach (var line in entry.PlaySources)
+            {
+                var playable = line.Episodes.Where(e => IsPlayableUrl(e.Url)).ToList();
+                droppedUrls += line.Episodes.Count - playable.Count;
+                if (playable.Count > 0)
+                {
+                    playableSources.Add(new PlaySource { Name = line.Name, Episodes = playable });
+                }
+            }
+
+            var playLine = PickPlaySource(playableSources, config.PreferredQuality);
+            var episodes = playLine?.Episodes ?? new List<PlayEpisode>();
+            if (episodes.Count == 0)
             {
                 _logger.LogDebug("Skip {Name}: no playable url", entry.Name);
                 return written;
             }
 
-            var title = Sanitize(string.IsNullOrWhiteSpace(entry.Name) ? "未命名" : entry.Name.Trim());
-            var year = Sanitize((entry.Year ?? string.Empty).Trim());
+            if (droppedUrls > 0)
+            {
+                _logger.LogWarning(
+                    "Entry {Name}: skipped {Count} episode url(s) that are not absolute http(s) links",
+                    entry.Name,
+                    droppedUrls);
+            }
+
+            var displayName = CleanTitle(entry.Name);
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                displayName = "未命名";
+            }
+
+            var title = Sanitize(displayName);
+            var year = string.IsNullOrWhiteSpace(entry.Year)
+                ? string.Empty
+                : Sanitize(entry.Year.Trim());
             var folderName = string.IsNullOrEmpty(year) ? title : $"{title} ({year})";
             var sourceRoot = Path.Combine(config.LibraryRoot, Sanitize(source.Name));
             var titleRoot = Path.Combine(sourceRoot, folderName);
@@ -63,7 +108,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             Directory.CreateDirectory(titleRoot);
 
-            var isSeries = playLine.Episodes.Count > 1
+            var isSeries = episodes.Count > 1
                            || string.Equals(entry.EntryType, "series", StringComparison.OrdinalIgnoreCase);
 
             if (!isSeries)
@@ -72,7 +117,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 var strmName = $"{folderName}.strm";
                 await File.WriteAllTextAsync(
                     Path.Combine(titleRoot, strmName),
-                    Resolve(playLine.Episodes[0].Url) + "\n",
+                    Resolve(episodes[0].Url) + "\n",
                     new UTF8Encoding(false),
                     ct).ConfigureAwait(false);
                 written.Add(Rel(config.LibraryRoot, Path.Combine(titleRoot, strmName)));
@@ -82,7 +127,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                     var nfoPath = Path.Combine(titleRoot, "movie.nfo");
                     await File.WriteAllTextAsync(
                         nfoPath,
-                        BuildMovieNfo(entry, folderName),
+                        BuildMovieNfo(entry, displayName),
                         new UTF8Encoding(false),
                         ct).ConfigureAwait(false);
                     written.Add(Rel(config.LibraryRoot, nfoPath));
@@ -99,16 +144,16 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                     var nfoPath = Path.Combine(titleRoot, "tvshow.nfo");
                     await File.WriteAllTextAsync(
                         nfoPath,
-                        BuildTvShowNfo(entry, title),
+                        BuildTvShowNfo(entry, displayName),
                         new UTF8Encoding(false),
                         ct).ConfigureAwait(false);
                     written.Add(Rel(config.LibraryRoot, nfoPath));
                 }
 
                 var usedNumbers = new HashSet<int>();
-                for (var i = 0; i < playLine.Episodes.Count; i++)
+                for (var i = 0; i < episodes.Count; i++)
                 {
-                    var episode = playLine.Episodes[i];
+                    var episode = episodes[i];
                     var number = ResolveEpisodeNumber(episode, i + 1, usedNumbers);
                     var baseName = $"{title} - S01E{number:00}";
                     var strmPath = Path.Combine(seasonDir, baseName + ".strm");
@@ -174,9 +219,9 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             }
         }
 
-        private static PlaySource PickPlaySource(VodEntry entry, string preferredQuality)
+        private static PlaySource PickPlaySource(IReadOnlyList<PlaySource> sources, string preferredQuality)
         {
-            if (entry.PlaySources.Count == 0)
+            if (sources.Count == 0)
             {
                 return null;
             }
@@ -184,7 +229,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             if (!string.IsNullOrWhiteSpace(preferredQuality))
             {
                 var keyword = preferredQuality.Trim();
-                var match = entry.PlaySources.FirstOrDefault(
+                var match = sources.FirstOrDefault(
                     s => s.Name.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0
                          || s.Episodes.Any(e => e.Url.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0));
                 if (match != null)
@@ -193,7 +238,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 }
             }
 
-            return entry.PlaySources.FirstOrDefault(s => s.Episodes.Count > 0);
+            return sources.FirstOrDefault(s => s.Episodes.Count > 0);
         }
 
         private static int ResolveEpisodeNumber(PlayEpisode episode, int fallback, HashSet<int> used)
@@ -201,24 +246,13 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             var number = fallback;
 
             // explicit number from the feed standard wins
-            if (episode.Number is int explicitNumber && explicitNumber > 0)
+            if (episode?.Number is int explicitNumber && explicitNumber > 0)
             {
                 number = explicitNumber;
             }
             else
             {
-                var match = EpisodeNumberRegex.Match(episode.Name ?? string.Empty);
-                if (match.Success)
-                {
-                    foreach (Group group in match.Groups)
-                    {
-                        if (group.Success && int.TryParse(group.Value, out var parsed) && parsed > 0)
-                        {
-                            number = parsed;
-                            break;
-                        }
-                    }
-                }
+                number = ParseEpisodeNumber(episode?.Name) ?? fallback;
             }
 
             // keep numbering strictly increasing to avoid collisions
@@ -229,6 +263,51 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             used.Add(number);
             return number;
+        }
+
+        /// <summary>
+        /// Parse an episode number from a display name. Explicit markers ("第N集" / "EP N") win
+        /// anywhere in the string; bare digits are only trusted as a leading index ("03.标题")
+        /// or when they are the whole name ("03") — never a year ("2024年…") or a
+        /// resolution ("1080P正片").
+        /// </summary>
+        private static int? ParseEpisodeNumber(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            var text = name.Trim();
+
+            foreach (var regex in new[] { EpisodeKeywordRegex, EpisodeEpRegex })
+            {
+                var match = regex.Match(text);
+                if (match.Success
+                    && int.TryParse(match.Groups[1].Value, out var parsed)
+                    && parsed > 0)
+                {
+                    return parsed;
+                }
+            }
+
+            var leading = EpisodeLeadingIndexRegex.Match(text);
+            if (leading.Success
+                && int.TryParse(leading.Groups[1].Value, out var leadingParsed)
+                && leadingParsed > 0)
+            {
+                return leadingParsed;
+            }
+
+            var whole = EpisodeWholeNumberRegex.Match(text);
+            if (whole.Success
+                && int.TryParse(whole.Groups[1].Value, out var wholeParsed)
+                && wholeParsed > 0)
+            {
+                return wholeParsed;
+            }
+
+            return null;
         }
 
         private static string BuildMovieNfo(VodEntry entry, string title)
@@ -247,9 +326,10 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
         private static string BuildEpisodeNfo(VodEntry entry, PlayEpisode episode, int number)
         {
+            var episodeName = CleanTitle(episode?.Name);
             var root = new XElement(
                 "episodedetails",
-                new XElement("title", string.IsNullOrWhiteSpace(episode.Name) ? $"第{number}集" : episode.Name),
+                new XElement("title", string.IsNullOrWhiteSpace(episodeName) ? $"第{number}集" : episodeName),
                 new XElement("season", 1),
                 new XElement("episode", number));
             if (!string.IsNullOrWhiteSpace(entry.Content))
@@ -263,7 +343,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
         private static void AppendCommonMetadata(XElement root, VodEntry entry, string title)
         {
             root.Add(new XElement("title", title));
-            root.Add(new XElement("sorttitle", entry.Name ?? title));
+            root.Add(new XElement("sorttitle", title));
             if (!string.IsNullOrWhiteSpace(entry.Year))
             {
                 root.Add(new XElement("year", entry.Year.Trim()));
@@ -333,6 +413,24 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             var text = HtmlTagRegex.Replace(value ?? string.Empty, " ");
             text = System.Net.WebUtility.HtmlDecode(text);
             return Regex.Replace(text, @"\s+", " ").Trim();
+        }
+
+        /// <summary>
+        /// Clean a display name: strip HTML tags (no space substitution — titles want
+        /// "铁血战士</b>：狩猎" to become "铁血战士：狩猎", not "铁血战士 ：狩猎"),
+        /// decode entities and collapse whitespace.
+        /// </summary>
+        private static string CleanTitle(string value)
+        {
+            var text = HtmlTagRegex.Replace(value ?? string.Empty, string.Empty);
+            text = System.Net.WebUtility.HtmlDecode(text);
+            return Regex.Replace(text, @"\s+", " ").Trim();
+        }
+
+        private static bool IsPlayableUrl(string url)
+        {
+            return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                   && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
         }
 
         private static string ToXmlString(XElement root)
