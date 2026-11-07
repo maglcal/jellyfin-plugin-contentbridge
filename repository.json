@@ -2,9 +2,9 @@
   {
     "category": "General",
     "name": "ContentBridge",
-    "owner": "maglcal",
+    "owner": "许诺",
     "guid": "b42fcd11-31f8-40fb-b605-77fc7b182edc",
-    "description": "Inject external content-source feeds into the Jellyfin media library as .strm virtual entries (NFO + poster), with scheduled sync, one-click search-and-add, and MaccCMS/Hailuo-style provide-vod API support. by 丶许诺 (maglcal) · 很庆幸曾经遇见你，遗憾的是只是遇见你——许诺",
+    "description": "Inject external content-source feeds into the Jellyfin media library as .strm virtual entries (NFO + poster), with scheduled sync, one-click search-and-add, and MaccCMS/Hailuo-style provide-vod API support. by 许诺 · 很庆幸曾经遇见你，遗憾的是只是遇见你——许诺",
     "overview": "Inject external content sources into your Jellyfin library",
     "imageUrl": "https://raw.githubusercontent.com/maglcal/jellyfin-plugin-contentbridge/main/docs/icon.png",
     "versions": [

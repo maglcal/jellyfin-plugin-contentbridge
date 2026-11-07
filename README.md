@@ -122,7 +122,7 @@ Jellyfin.Plugin.ContentBridge/
 
 ## License
 
-[GPL-2.0](LICENSE) © 2026 丶许诺 (maglcal)
+[GPL-2.0](LICENSE) © 2026 许诺
 
 与 Jellyfin 本体的 GPL-2.0 许可保持一致，可自由使用、修改、分发，衍生作品需同样以 GPL-2.0 发布。
 
