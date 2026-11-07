@@ -153,9 +153,10 @@ namespace Jellyfin.Plugin.ContentBridge.Api
         /// <summary>
         /// Update the auto-sync schedule. Same effect as editing the task under
         /// 控制台 → 计划任务, kept in sync there. intervalHours of null or 0 means manual only.
+        /// Returns the updated schedule so the config page can confirm the round trip.
         /// </summary>
         [HttpPost("schedule")]
-        public IActionResult SetSchedule([FromBody] SyncScheduleRequest request)
+        public ActionResult<SyncScheduleInfo> SetSchedule([FromBody] SyncScheduleRequest request)
         {
             var worker = FindSyncWorker();
             if (worker == null)
@@ -172,7 +173,7 @@ namespace Jellyfin.Plugin.ContentBridge.Api
                 worker.Triggers = TaskTriggerCompat.BuildIntervalTriggers(request.IntervalHours.Value);
             }
 
-            return NoContent();
+            return GetSchedule();
         }
 
         private IScheduledTaskWorker FindSyncWorker()
