@@ -40,6 +40,9 @@ namespace Jellyfin.Plugin.ContentBridge
                 new PluginPageInfo
                 {
                     Name = Name,
+                    DisplayName = "ContentBridge 设置",
+                    MenuIcon = "sync_alt",
+                    EnableInMainMenu = true,
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.configPage.html"
                 }
             };

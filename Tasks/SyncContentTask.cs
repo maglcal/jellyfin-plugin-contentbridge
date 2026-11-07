@@ -12,6 +12,11 @@ namespace Jellyfin.Plugin.ContentBridge.Tasks
     /// </summary>
     public class SyncContentTask : IScheduledTask
     {
+        /// <summary>
+        /// The task key, also used to look the task up via <c>ITaskManager</c>.
+        /// </summary>
+        public const string TaskKey = "ContentBridgeSync";
+
         private readonly SyncService _syncService;
 
         public SyncContentTask(SyncService syncService)
@@ -23,7 +28,7 @@ namespace Jellyfin.Plugin.ContentBridge.Tasks
         public string Name => "同步外部内容源";
 
         /// <inheritdoc />
-        public string Key => "ContentBridgeSync";
+        public string Key => TaskKey;
 
         /// <inheritdoc />
         public string Description => "拉取已配置的内容接口，把条目以 .strm 虚拟条目的形式写入媒体库目录";
@@ -40,25 +45,9 @@ namespace Jellyfin.Plugin.ContentBridge.Tasks
         /// <inheritdoc />
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
-            var trigger = new TaskTriggerInfo
-            {
-                IntervalTicks = TimeSpan.FromHours(6).Ticks
-            };
-
-            // Jellyfin 10.11 changed TaskTriggerInfo.Type from a string ("IntervalTrigger")
-            // to the TaskTriggerInfoType enum. Assign it reflectively so that this single
-            // build runs correctly on both 10.10.x and 10.11.x servers.
-            var typeProperty = typeof(TaskTriggerInfo).GetProperty("Type");
-            if (typeProperty?.PropertyType == typeof(string))
-            {
-                typeProperty.SetValue(trigger, "IntervalTrigger");
-            }
-            else if (typeProperty != null)
-            {
-                typeProperty.SetValue(trigger, Enum.Parse(typeProperty.PropertyType, "IntervalTrigger"));
-            }
-
-            return new[] { trigger };
+            // Type (string on 10.10.x, enum on 10.11.x) is assigned via TaskTriggerCompat
+            // so that this single build runs correctly on both server versions.
+            return TaskTriggerCompat.CreateDefaultTriggers(TimeSpan.FromHours(6).Ticks);
         }
     }
 }

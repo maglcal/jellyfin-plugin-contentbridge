@@ -33,6 +33,14 @@
                 </div>
 
                 <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
+                    <h2 class="sectionTitle">自动同步</h2>
+                </div>
+                <div class="inputContainer">
+                    <select is="emby-select" id="cbSyncInterval" label="同步间隔"></select>
+                    <div class="fieldDescription">与 控制台 → 计划任务 → 「同步外部内容源」 是同一份设置，在这里改立即生效，不用再去计划任务里找。选「仅手动」则只在点「立即同步」时运行</div>
+                </div>
+
+                <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
                     <h2 class="sectionTitle">数据源</h2>
                 </div>
                 <div id="cbSources"></div>
@@ -178,6 +186,53 @@
                 renderSources(config.Sources || []);
             }
 
+            var schedulePresets = [
+                { h: 0, label: '仅手动（不自动同步）' },
+                { h: 1, label: '每小时' },
+                { h: 6, label: '每 6 小时' },
+                { h: 12, label: '每 12 小时' },
+                { h: 24, label: '每天' },
+                { h: 168, label: '每周' }
+            ];
+
+            function fillSchedule(sch) {
+                var sel = page.querySelector('#cbSyncInterval');
+                sel.innerHTML = '';
+                var current = (sch && sch.Enabled && sch.IntervalHours) ? sch.IntervalHours : 0;
+
+                // Non-interval trigger configured directly in 计划任务: keep it untouched by default.
+                var custom = !!(sch && sch.TriggerType && !sch.IntervalHours);
+
+                var options = schedulePresets.slice();
+                var matched = options.some(function (o) { return o.h === current; });
+                if (current > 0 && !matched) {
+                    options.push({ h: current, label: '每 ' + current + ' 小时（自定义）' });
+                }
+                if (custom) {
+                    options.push({ h: -1, label: '自定义触发器（在计划任务中配置，保存此处不会改动它）' });
+                    current = -1;
+                }
+
+                options.forEach(function (o) {
+                    var opt = document.createElement('option');
+                    opt.value = String(o.h);
+                    opt.textContent = o.label;
+                    sel.appendChild(opt);
+                });
+                sel.value = String(current);
+            }
+
+            function saveSchedule() {
+                var v = page.querySelector('#cbSyncInterval').value;
+                if (v === '-1') {
+                    // custom trigger owned by 计划任务; leave it alone
+                    return Promise.resolve();
+                }
+                var hours = parseFloat(v) || 0;
+                return apiPost('ContentBridge/schedule', { IntervalHours: hours > 0 ? hours : null })
+                    .catch(function () { return Promise.reject(new Error('schedule')); });
+            }
+
             page.querySelector('#contentbridge-config-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 Dashboard.showLoadingMsg();
@@ -189,7 +244,10 @@
                 config.DownloadImages = page.querySelector('#cbDownloadImages').checked;
                 config.CleanupRemoved = page.querySelector('#cbCleanupRemoved').checked;
                 config.Sources = collectSources();
-                ApiClient.updatePluginConfiguration(pluginId, config).then(function () {
+                Promise.all([
+                    ApiClient.updatePluginConfiguration(pluginId, config),
+                    saveSchedule()
+                ]).then(function () {
                     Dashboard.hideLoadingMsg();
                     Dashboard.processPluginConfigurationUpdateResult();
                     status('已保存');
@@ -259,9 +317,13 @@
 
             page.addEventListener('pageshow', function () {
                 Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
+                Promise.all([
+                    ApiClient.getPluginConfiguration(pluginId),
+                    apiGet('ContentBridge/schedule').catch(function () { return null; })
+                ]).then(function (results) {
                     Dashboard.hideLoadingMsg();
-                    fillForm(cfg);
+                    fillForm(results[0]);
+                    fillSchedule(results[1]);
                 }).catch(function () {
                     Dashboard.hideLoadingMsg();
                 });

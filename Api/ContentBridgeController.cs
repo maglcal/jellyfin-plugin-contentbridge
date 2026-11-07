@@ -5,13 +5,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.ContentBridge.Models;
 using Jellyfin.Plugin.ContentBridge.Services;
+using Jellyfin.Plugin.ContentBridge.Tasks;
+using MediaBrowser.Model.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Jellyfin.Plugin.ContentBridge.Api
 {
     /// <summary>
-    /// Endpoints backing the plugin config page: search, add-to-library, sync-now.
+    /// Endpoints backing the plugin config page: search, add-to-library, sync-now,
+    /// and sync schedule (shared with the scheduled task).
     /// </summary>
     [ApiController]
     [Authorize]
@@ -21,12 +24,14 @@ namespace Jellyfin.Plugin.ContentBridge.Api
         private readonly ContentApiClient _client;
         private readonly FeedClient _feed;
         private readonly SyncService _syncService;
+        private readonly ITaskManager _taskManager;
 
-        public ContentBridgeController(ContentApiClient client, FeedClient feed, SyncService syncService)
+        public ContentBridgeController(ContentApiClient client, FeedClient feed, SyncService syncService, ITaskManager taskManager)
         {
             _client = client;
             _feed = feed;
             _syncService = syncService;
+            _taskManager = taskManager;
         }
 
         /// <summary>
@@ -113,6 +118,69 @@ namespace Jellyfin.Plugin.ContentBridge.Api
             return Accepted();
         }
 
+        /// <summary>
+        /// Read the auto-sync schedule (shared with the "同步外部内容源" scheduled task).
+        /// </summary>
+        [HttpGet("schedule")]
+        public ActionResult<SyncScheduleInfo> GetSchedule()
+        {
+            var worker = FindSyncWorker();
+            if (worker == null)
+            {
+                return NotFound("找不到同步计划任务");
+            }
+
+            var info = new SyncScheduleInfo();
+            foreach (var trigger in worker.Triggers ?? Array.Empty<TaskTriggerInfo>())
+            {
+                if (TaskTriggerCompat.IsIntervalTrigger(trigger))
+                {
+                    info.Enabled = true;
+                    info.IntervalHours = trigger.IntervalTicks.HasValue
+                        ? TimeSpan.FromTicks(trigger.IntervalTicks.Value).TotalHours
+                        : (double?)null;
+                    break;
+                }
+
+                // Non-interval trigger configured manually in 计划任务; surface its type.
+                info.Enabled = true;
+                info.TriggerType = info.TriggerType ?? TaskTriggerCompat.GetTriggerTypeName(trigger);
+            }
+
+            return info;
+        }
+
+        /// <summary>
+        /// Update the auto-sync schedule. Same effect as editing the task under
+        /// 控制台 → 计划任务, kept in sync there. intervalHours of null or 0 means manual only.
+        /// </summary>
+        [HttpPost("schedule")]
+        public IActionResult SetSchedule([FromBody] SyncScheduleRequest request)
+        {
+            var worker = FindSyncWorker();
+            if (worker == null)
+            {
+                return NotFound("找不到同步计划任务");
+            }
+
+            if (request == null || !request.IntervalHours.HasValue || request.IntervalHours.Value <= 0)
+            {
+                worker.Triggers = TaskTriggerCompat.BuildManualTriggers();
+            }
+            else
+            {
+                worker.Triggers = TaskTriggerCompat.BuildIntervalTriggers(request.IntervalHours.Value);
+            }
+
+            return NoContent();
+        }
+
+        private IScheduledTaskWorker FindSyncWorker()
+        {
+            return _taskManager.ScheduledTasks.FirstOrDefault(
+                w => string.Equals(w.ScheduledTask?.Key, SyncContentTask.TaskKey, StringComparison.OrdinalIgnoreCase));
+        }
+
         private SourceConfig FindSource(string name)
         {
             var config = Plugin.Instance?.Configuration;
@@ -133,5 +201,25 @@ namespace Jellyfin.Plugin.ContentBridge.Api
     public class AddResult
     {
         public List<string> Files { get; set; } = new List<string>();
+    }
+
+    /// <summary>Current auto-sync schedule of the sync task.</summary>
+    public class SyncScheduleInfo
+    {
+        /// <summary>Gets or sets a value indicating whether any automatic trigger is configured.</summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>Gets or sets the interval in hours for interval triggers (null when not an interval trigger).</summary>
+        public double? IntervalHours { get; set; }
+
+        /// <summary>Gets or sets the trigger type name when a non-interval trigger was configured manually.</summary>
+        public string TriggerType { get; set; }
+    }
+
+    /// <summary>Request body for updating the auto-sync schedule.</summary>
+    public class SyncScheduleRequest
+    {
+        /// <summary>Gets or sets the interval in hours. Null or 0 disables auto sync (manual only).</summary>
+        public double? IntervalHours { get; set; }
     }
 }
