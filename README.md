@@ -1,5 +1,7 @@
 # Jellyfin.Plugin.ContentBridge
 
+<p align="center"><img src="docs/icon.png" width="480" alt="ContentBridge" /></p>
+
 把外部内容接口的条目**注入 Jellyfin 媒体库**的插件——fnmedia-ext 思路的 Jellyfin 实现。
 条目以 `.strm` 虚拟条目 + NFO + 海报的形式落到媒体库目录，Jellyfin 原生刮削、搜索、播放，
 播放走外部链路不占盘，插件版本升级免疫（不碰内核 API）。
