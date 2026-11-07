@@ -19,7 +19,6 @@ namespace Jellyfin.Plugin.ContentBridge.Services
     public sealed class FeedClient
     {
         public const string SchemaId = "contentbridge-feed/1";
-
         private static readonly HttpClient Http = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(60)
@@ -33,9 +32,10 @@ namespace Jellyfin.Plugin.ContentBridge.Services
         }
 
         /// <summary>
-        /// Load and merge all entries for a feed source.
+        /// Load and merge all entries for a feed source. Returns the merged document,
+        /// including feed-level update metadata (generator / version / mode).
         /// </summary>
-        public async Task<List<VodEntry>> LoadAsync(SourceConfig source, CancellationToken ct)
+        public async Task<FeedData> LoadAsync(SourceConfig source, CancellationToken ct)
         {
             var location = (source.ApiUrl ?? string.Empty).Trim();
             if (location.Length == 0)
@@ -47,24 +47,25 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 || location.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
                 var body = await Http.GetStringAsync(location, ct).ConfigureAwait(false);
-                return ParseFeed(body);
+                return ParseFeedDoc(body);
             }
 
             if (File.Exists(location))
             {
-                return ParseFeed(await File.ReadAllTextAsync(location, ct).ConfigureAwait(false));
+                return ParseFeedDoc(await File.ReadAllTextAsync(location, ct).ConfigureAwait(false));
             }
 
             if (Directory.Exists(location))
             {
                 var merged = new Dictionary<string, VodEntry>(StringComparer.Ordinal);
+                var result = new FeedData();
                 foreach (var file in Directory.GetFiles(location, "*.json").OrderBy(f => f, StringComparer.Ordinal))
                 {
                     ct.ThrowIfCancellationRequested();
-                    List<VodEntry> entries;
+                    FeedData part;
                     try
                     {
-                        entries = ParseFeed(await File.ReadAllTextAsync(file, ct).ConfigureAwait(false));
+                        part = ParseFeedDoc(await File.ReadAllTextAsync(file, ct).ConfigureAwait(false));
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -72,23 +73,40 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                         continue;
                     }
 
+                    // header merge: delta wins (conservative), generator/version taken from the latest file
+                    if (part.IsDelta)
+                    {
+                        result.Mode = FeedData.ModeDelta;
+                    }
+
+                    if (part.Generator.Length > 0)
+                    {
+                        result.Generator = part.Generator;
+                    }
+
+                    if (part.Version.Length > 0)
+                    {
+                        result.Version = part.Version;
+                    }
+
                     // later files (by name order) override earlier ones on id collision
-                    foreach (var entry in entries)
+                    foreach (var entry in part.Items)
                     {
                         merged[entry.Id] = entry;
                     }
                 }
 
-                return merged.Values.ToList();
+                result.Items = merged.Values.ToList();
+                return result;
             }
 
             throw new InvalidOperationException($"Feed 路径不存在：{location}");
         }
 
         /// <summary>
-        /// Parse one feed document (contentbridge-feed/1).
+        /// Parse one feed document (contentbridge-feed/1), including header metadata.
         /// </summary>
-        public static List<VodEntry> ParseFeed(string json)
+        public static FeedData ParseFeedDoc(string json)
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
@@ -99,29 +117,51 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 throw new InvalidOperationException($"schema 不匹配（期望 {SchemaId}，实际 {(string.IsNullOrEmpty(schema) ? "缺失" : schema)}）");
             }
 
-            var result = new List<VodEntry>();
-            if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+            var result = new FeedData
             {
-                return result;
-            }
+                Generator = GetString(root, "generator"),
+                Version = GetString(root, "version"),
+                Mode = GetString(root, "mode"),
+                Updated = GetString(root, "updated")
+            };
 
-            foreach (var item in items.EnumerateArray())
+            if (root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
             {
-                var entry = ParseItem(item);
-                if (entry != null)
+                foreach (var item in items.EnumerateArray())
                 {
-                    result.Add(entry);
+                    var entry = ParseItem(item);
+                    if (entry != null)
+                    {
+                        result.Items.Add(entry);
+                    }
                 }
             }
 
             return result;
         }
 
+        /// <summary>
+        /// Parse one feed document and return only its items (compat helper).
+        /// </summary>
+        public static List<VodEntry> ParseFeed(string json)
+        {
+            return ParseFeedDoc(json).Items;
+        }
+
         private static VodEntry ParseItem(JsonElement item)
         {
             var id = GetString(item, "id");
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return null;
+            }
+
+            // tombstone: {"id": "...", "deleted": true} — entry removed upstream
+            var deletedFlag = GetString(item, "deleted");
+            var deleted = deletedFlag == "true" || deletedFlag == "1";
+
             var title = GetString(item, "title");
-            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title))
+            if (string.IsNullOrWhiteSpace(title) && !deleted)
             {
                 return null;
             }
@@ -130,6 +170,8 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             {
                 Id = id,
                 Name = title,
+                Deleted = deleted,
+                Updated = GetString(item, "updated"),
                 Year = GetString(item, "year"),
                 TypeName = GetString(item, "category", "type_name"),
                 Pic = GetString(item, "poster", "pic"),
@@ -234,5 +276,33 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             return string.Empty;
         }
+    }
+
+    /// <summary>
+    /// One parsed feed document: header metadata plus items.
+    /// </summary>
+    public sealed class FeedData
+    {
+        public const string ModeDelta = "delta";
+
+        /// <summary>采集程序名称 / 版本（generator 字段），仅作展示。</summary>
+        public string Generator { get; set; } = string.Empty;
+
+        /// <summary>数据版本号（version 字段），语义由采集程序自定。</summary>
+        public string Version { get; set; } = string.Empty;
+
+        /// <summary>"full"（默认）或 "delta"。</summary>
+        public string Mode { get; set; } = string.Empty;
+
+        /// <summary>整份数据的产出时间（ISO-8601），仅作展示。</summary>
+        public string Updated { get; set; } = string.Empty;
+
+        public List<VodEntry> Items { get; set; } = new List<VodEntry>();
+
+        /// <summary>
+        /// delta = 只含变更条目（配合 deleted 墓碑表达下架），此时禁止全量清理，
+        /// 否则会把未出现在本次 feed 里的正常条目误删。
+        /// </summary>
+        public bool IsDelta => string.Equals(Mode, ModeDelta, StringComparison.OrdinalIgnoreCase);
     }
 }

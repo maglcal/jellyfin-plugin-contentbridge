@@ -101,7 +101,8 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             Directory.CreateDirectory(config.LibraryRoot);
             var entry = IsFeedSource(source)
                 ? (await _feed.LoadAsync(source, ct).ConfigureAwait(false))
-                    .FirstOrDefault(e => string.Equals(e.Id, vodId, StringComparison.Ordinal))
+                    .Items
+                    .FirstOrDefault(e => string.Equals(e.Id, vodId, StringComparison.Ordinal) && !e.Deleted)
                 : await _client.GetDetailAsync(source, vodId, ct).ConfigureAwait(false);
             if (entry == null)
             {
@@ -121,15 +122,29 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             if (IsFeedSource(source))
             {
-                var entries = (await _feed.LoadAsync(source, ct).ConfigureAwait(false)).Take(maxItems).ToList();
-                foreach (var entry in entries)
+                var doc = await _feed.LoadAsync(source, ct).ConfigureAwait(false);
+                manifest.Sources.TryGetValue(source.Name, out var knownPaths);
+                manifest.UpdatedStamps.TryGetValue(source.Name, out var knownStamps);
+                var plan = PlanFeedSync(doc, knownPaths, knownStamps, maxItems);
+
+                foreach (var entry in plan.Upserts)
                 {
                     ct.ThrowIfCancellationRequested();
                     var written = await _writer.WriteAsync(entry, source, config, ct).ConfigureAwait(false);
-                    UpdateManifest(manifest, source.Name, entry.Id, written);
+                    UpdateManifest(manifest, source.Name, entry.Id, written, entry.Updated);
                 }
 
-                _logger.LogInformation("ContentBridge: feed source {Source} synced {Count} title(s)", source.Name, entries.Count);
+                foreach (var id in plan.TombstoneIds)
+                {
+                    DeleteEntry(manifest, source.Name, id, config.LibraryRoot);
+                }
+
+                _logger.LogInformation(
+                    "ContentBridge: feed source {Source} synced {Count} title(s), {Skipped} unchanged, {Deleted} removed",
+                    source.Name,
+                    plan.Upserts.Count,
+                    plan.SkippedIds.Count,
+                    plan.TombstoneIds.Count);
                 return;
             }
 
@@ -177,9 +192,25 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 HashSet<string> liveIds;
                 try
                 {
-                    liveIds = IsFeedSource(source)
-                        ? new HashSet<string>((await _feed.LoadAsync(source, ct).ConfigureAwait(false)).Select(e => e.Id), StringComparer.Ordinal)
-                        : await _client.GetAllIdsAsync(source, ct).ConfigureAwait(false);
+                    if (IsFeedSource(source))
+                    {
+                        var doc = await _feed.LoadAsync(source, ct).ConfigureAwait(false);
+                        if (doc.IsDelta)
+                        {
+                            // delta feed 只表达变更，不是完整清单；全量清理会误删正常条目。
+                            // 下架请在 feed 里用 deleted 墓碑表达。
+                            _logger.LogInformation(
+                                "ContentBridge: cleanup skipped for {Source}: delta feed (use deleted tombstones instead)",
+                                source.Name);
+                            continue;
+                        }
+
+                        liveIds = new HashSet<string>(doc.Items.Where(e => !e.Deleted).Select(e => e.Id), StringComparer.Ordinal);
+                    }
+                    else
+                    {
+                        liveIds = await _client.GetAllIdsAsync(source, ct).ConfigureAwait(false);
+                    }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -202,7 +233,67 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             }
         }
 
-        private static void UpdateManifest(ManifestData manifest, string sourceName, string vodId, IReadOnlyList<string> paths)
+        /// <summary>
+        /// Pure planning step for a feed sync: split the feed into upserts, unchanged
+        /// skips (matched by updated stamp) and tombstone deletions. Tombstones always
+        /// apply and never count against maxItems.
+        /// </summary>
+        public static FeedSyncPlan PlanFeedSync(
+            FeedData feed,
+            IReadOnlyDictionary<string, List<string>> knownPaths,
+            IReadOnlyDictionary<string, string> knownStamps,
+            int maxItems)
+        {
+            var plan = new FeedSyncPlan();
+            foreach (var entry in feed.Items)
+            {
+                if (entry.Deleted)
+                {
+                    plan.TombstoneIds.Add(entry.Id);
+                    continue;
+                }
+
+                if (entry.Updated.Length > 0
+                    && knownStamps != null
+                    && knownStamps.TryGetValue(entry.Id, out var stamp)
+                    && string.Equals(stamp, entry.Updated, StringComparison.Ordinal)
+                    && knownPaths != null
+                    && knownPaths.TryGetValue(entry.Id, out var paths)
+                    && paths.Count > 0)
+                {
+                    plan.SkippedIds.Add(entry.Id);
+                    continue;
+                }
+
+                plan.Upserts.Add(entry);
+            }
+
+            if (maxItems > 0 && plan.Upserts.Count > maxItems)
+            {
+                plan.Upserts = plan.Upserts.Take(maxItems).ToList();
+            }
+
+            return plan;
+        }
+
+        private void DeleteEntry(ManifestData manifest, string sourceName, string id, string libraryRoot)
+        {
+            if (!manifest.Sources.TryGetValue(sourceName, out var entries) || !entries.TryGetValue(id, out var paths))
+            {
+                return;
+            }
+
+            _writer.Delete(paths, libraryRoot);
+            entries.Remove(id);
+            if (manifest.UpdatedStamps.TryGetValue(sourceName, out var stamps))
+            {
+                stamps.Remove(id);
+            }
+
+            _logger.LogInformation("ContentBridge: tombstone removed entry {Id} from {Source}", id, sourceName);
+        }
+
+        private static void UpdateManifest(ManifestData manifest, string sourceName, string vodId, IReadOnlyList<string> paths, string updated = null)
         {
             if (paths.Count == 0 || string.IsNullOrEmpty(vodId))
             {
@@ -216,6 +307,17 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             }
 
             entries[vodId] = paths.ToList();
+
+            if (!string.IsNullOrEmpty(updated))
+            {
+                if (!manifest.UpdatedStamps.TryGetValue(sourceName, out var stamps))
+                {
+                    stamps = new Dictionary<string, string>(StringComparer.Ordinal);
+                    manifest.UpdatedStamps[sourceName] = stamps;
+                }
+
+                stamps[vodId] = updated;
+            }
         }
 
         private static ManifestData LoadManifest(string libraryRoot)
@@ -257,5 +359,24 @@ namespace Jellyfin.Plugin.ContentBridge.Services
     {
         public Dictionary<string, Dictionary<string, List<string>>> Sources { get; set; }
             = new Dictionary<string, Dictionary<string, List<string>>>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// source -> vodId -> last-seen feed "updated" stamp, used to skip rewriting
+        /// unchanged entries on later syncs.
+        /// </summary>
+        public Dictionary<string, Dictionary<string, string>> UpdatedStamps { get; set; }
+            = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Result of <see cref="SyncService.PlanFeedSync"/>: what to write, what to skip, what to delete.
+    /// </summary>
+    public sealed class FeedSyncPlan
+    {
+        public List<VodEntry> Upserts { get; set; } = new List<VodEntry>();
+
+        public HashSet<string> SkippedIds { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
+        public HashSet<string> TombstoneIds { get; set; } = new HashSet<string>(StringComparer.Ordinal);
     }
 }

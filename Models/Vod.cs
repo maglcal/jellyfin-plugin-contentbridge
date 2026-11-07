@@ -38,6 +38,19 @@ namespace Jellyfin.Plugin.ContentBridge.Models
         public string EntryType { get; set; } = string.Empty;
 
         /// <summary>
+        /// Gets or sets the source-side change stamp (ISO-8601). Feed standard only.
+        /// Used to skip rewriting entries that have not changed.
+        /// </summary>
+        public string Updated { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this item is a tombstone (feed standard:
+        /// <c>"deleted": true</c> marks the entry as removed upstream and deletes the files
+        /// written for it).
+        /// </summary>
+        public bool Deleted { get; set; }
+
+        /// <summary>
         /// Gets the play lines. Each line (flag) contains its own episode list.
         /// </summary>
         public List<PlaySource> PlaySources { get; set; } = new List<PlaySource>();

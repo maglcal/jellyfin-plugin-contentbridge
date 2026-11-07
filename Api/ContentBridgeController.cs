@@ -52,10 +52,11 @@ namespace Jellyfin.Plugin.ContentBridge.Api
             if (SyncService.IsFeedSource(sourceConfig))
             {
                 var entries = await _feed.LoadAsync(sourceConfig, cancellationToken).ConfigureAwait(false);
-                return entries
-                    .Where(e => (e.Name ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+                return entries.Items
+                    .Where(e => !e.Deleted
+                                && ((e.Name ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
                                 || (e.Content ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
-                                || (e.Remarks ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                                || (e.Remarks ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)))
                     .Take(30)
                     .ToList();
             }

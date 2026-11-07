@@ -69,6 +69,11 @@ Jellyfin 混合媒体库（Movies + Shows）→ 海报墙 / 搜索 / 全客户�
 插件负责解析入库。采集程序只管落数据，不用提供任何 HTTP 服务。规范含字段表、合并规则、
 自测清单和[样例](samples/feed-sample.json)。
 
+- **不会写采集程序？** 看 [docs/CRAWLER-GUIDE.md](docs/CRAWLER-GUIDE.md)：从零上手教程 + 可直接运行的
+  [模板脚本](samples/crawler-template.py)（内置演示数据，开箱能跑）。
+- **更新机制**：支持全量 / 增量（`mode: "delta"`）两种产出方式，条目级 `updated` 变更戳跳过未变化条目，
+  下架用墓碑（`"deleted": true`）即时删除。详见规范 §5 与指南 §4。
+
 **2. 标准接口**——适配 **MaccCMS（苹果CMS）/ 海螺** 系 provide vod 接口：
 
 - 列表：`?ac=detail&at=json&pg=1&t=分类ID`（JSON 优先，XML 自动兜底）
