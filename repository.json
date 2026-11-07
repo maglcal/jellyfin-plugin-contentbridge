@@ -14,6 +14,14 @@
         "checksum": "41880a0fa6292fa0145f1a538de013f9",
         "targetAbi": "10.11.0.0",
         "timestamp": "2026-11-05T06:23:07Z"
+      },
+      {
+        "version": "0.2.0.0",
+        "changelog": "Custom crawler feed standard (contentbridge-feed/1) with delta mode, deletion tombstones and per-item updated stamps; crawler development guide + runnable template; local stream proxy (UA/Referer, HLS playlist rewriting, Range passthrough); single build for Jellyfin 10.10.x and 10.11.x (targetAbi 10.10.0.0).",
+        "sourceUrl": "https://github.com/maglcal/jellyfin-plugin-contentbridge/releases/download/v0.2.0/contentbridge_0.2.0.0.zip",
+        "checksum": "7e7200082f00477bc11615c266277d07",
+        "targetAbi": "10.10.0.0",
+        "timestamp": "2026-11-07T05:41:58Z"
       }
     ]
   }
