@@ -148,6 +148,47 @@
     `allowPluginPages` 的 restrictedplugins 白名单在浏览器 apphost 特性表中**不存在**（仅原生 App 生效）——白名单论排除；
     4.8/4.10 index.html importmap 均含 baseView/loading/emby-* 全套模块名。
   - 版本升 **v0.3.0.3**；cbtest 69/69、三路构建全绿。
+- **Emby 版本对应关系（用户确认）+ 4.10 空白根因考古（只读，待 v0.3.0.3 测试后"一起改"）**：
+  - "官方版" = **飞牛社区版 Emby 4.9.0.42 测试版**（v0.3.0.1 内联脚本页、v0.3.0.2 AMD 页均正常）；
+    "docker 版" = linuxserver/emby = **Emby 4.10.2.0**（两版均空白）→ 空白是 **4.10 web 独有行为**。
+  - **templateType 包装论排除**：4.10 app.js 路由表 `/configurationpage` 注册**无 templateType 字段** →
+    approuter `switch(request.templateType)` 落空（无 default）→ 插件配置页不会被 settings/wizard 壳包装。头号嫌疑清零。
+  - **4.10 独有三机制（空白根因指向）**：
+    ① `addMethodsToPluginControllerFactory`（viewmanager.js）：控制器原型缺 onResume **或** onPause 任一 →
+    自动 import baseview.js 将构造器包装为 `NewPrototype(){BaseView.apply(this,args);OriginalController.apply(this,args)}`
+    （BaseView 构造器强依赖 view 的 scroller/focus 基础设施，构造抛错 → 控制器实例化失败 → 空白）。
+    **v0.3.0.2 实证只有 onResume、没有 onPause（commit 0258d99）→ 正中包装路径**；
+    v0.3.0.3 显式空实现双钩子（embyConfigPage.js L383-384）→ 短路包装，已对症。
+    ② loadView isPluginpage 分支：`view.needsPageEvents=!0` + scroller 自动包装
+    （找 `[is="emby-scroller"]` 或 `:scope > [data-role="content"], :scope > .content-primary`，找不到只跳过不炸）——低危。
+    ③ require reject 挂死路径仍在（`data-controller` → `require([url]).then(...)` 无 catch）；
+    v0.3.0.3 零依赖 define 已把依赖面清零，残余可能仅模块 URL 本身 404。
+  - 旁支：4.10 loadView 对插件页还会异步补 `legacy/dashboard.js`+css（其失败同样挂 Promise.all）；
+    飞牛社区版 4.9.0.42 用 v0.3.0.1 内联脚本页也能跑，疑似 fnOS 定制 web 加载链，行为不完全等同原版 4.9。
+- **第三轮真机测试修复（v0.3.0.4）**：
+  - **docker 版（4.10.2.0）设置页报错 `viewController.onBeginResume is not a function`（v0.3.0.3 实测）**：
+    - 根因钉死：4.10 `viewmanager.getTransitionPromiseWithoutTransition`（6 个转场调用点全部汇流到它）
+      **无守卫直调** `viewController.onBeginResume(...)`——`||Promise.resolve()` 只兜返回值为假，不兜方法缺失。
+    - **4.8/4.9 真值短路陷阱**（本轮关键考古）：4.8 viewmanager 两处同名属性是**真值探测而非调用**
+      （showView/tryRestoreView：`controller.onBeginResume || ...previousViewInfo.view.classList.add("hide")`）——
+      存在 ⇒ 视为控制器自带 BaseView 式转场 ⇒ viewmanager 跳过旧视图 hide/新视图 show。
+      **无条件补空钩子会让 4.8/4.9 双视图叠加**；且 4.8 对裸控制器该钩子只探测永不调用（唯一调用点在
+      BaseView 的 viewbeforeshow 监听器）→ 补偿逻辑放钩子函数体内对 4.8 无效。
+    - 修复 = **判代条件定义**（embyConfigPage.js）：4.10 loadView 在构造控制器**之前**给插件页根元素打
+      `needsPageEvents=true` + `page-hidden` 双标记（4.8 提取物零命中）→ 仅当双标记同时存在才挂实例级空钩子；
+      `viewbeforeshow` 惰性补挂兜通道 B（内联引导构造早于打标）；`__cbCore.init` 对齐 `view.controller` 约定
+      （4.10 对无控制器的页面同样在转场点炸）。4.10 转场词表是 `page-hidden`、4.8/4.9 是 `hide`，
+      4.10 layout.css 两种类都有——钩子返回 undefined 由调用点 `||Promise.resolve()` 兜底，转场照常。
+    - 判代安全性论证：v0.3.0.3 在 4.9 上设置页本来就好（不定义钩子 = 原生路径）；若 fnOS 4.9 web 是
+      4.10 式（带标记）则其转场机器自管显隐、补钩子无副作用——两世界都安全；唯一坏世界（4.9 带标记且真值短路）
+      需要 fnOS 混合两套互斥机制，概率趋零，且症状（旧视图残留）在 B2 回归中一测便知。
+  - **社区版（4.9.0.42）计划任务「同步外部内容源」0 秒失败（v0.3.0.3 实测）**：
+    静态排查收窄——`RunAsync` 全路径复核（`Sources ?? new`、`progress?.Report`、逐源 catch 汇总、
+    manifest try/catch 非致命、ServiceRoot 懒构造链全部平凡构造器）；「未配置 LibraryRoot」「无启用源」
+    都是软跳过**不致失败**。0 秒即失败只剩两类环境性候选：①`Directory.CreateDirectory(LibraryRoot)` 瞬间抛
+    （路径/磁盘/写权限，错误文案「媒体库根目录不可用（…）」）②数据源连接瞬间失败致 Failed>0、任务壳汇总抛
+    （「N 个数据源同步失败：…」）。两者错误原文都在任务详情里——待用户提供后收尾。
+  - 版本升 **v0.3.0.4**；cbtest 69/69、三路构建全绿（打包前已重跑 4.8 覆盖 4.10 验证产物）。
 
 ---
 

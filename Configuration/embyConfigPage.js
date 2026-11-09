@@ -365,7 +365,31 @@
     }
 
     function createViewClass() {
+        // 4.10+ web calls viewController.onBeginResume(...) unguarded on every view
+        // transition (missing method = "onBeginResume is not a function" crash). 4.8/4.9
+        // instead probe the same property as a truthy flag: its presence means "this
+        // controller runs its own view transitions", so viewmanager would then skip
+        // hiding the previous view and both views would stack. 4.10's loadView stamps
+        // needsPageEvents + page-hidden on plugin page roots before the controller is
+        // constructed, so define the stub ONLY when both markers are present — every
+        // web build then keeps its native behavior.
+        function ensureBeginResume(view, controller) {
+            if (view && controller && view.needsPageEvents === true
+                && view.classList && view.classList.contains('page-hidden')) {
+                controller.onBeginResume = function () { };
+            }
+        }
+
         function View(view) {
+            ensureBeginResume(view, this);
+            if (view && !view.__cbResumeHooked) {
+                view.__cbResumeHooked = true;
+                // Re-check on first show: the inline-bootstrap channel constructs the
+                // controller before loadView stamps the markers above.
+                view.addEventListener('viewbeforeshow', function () {
+                    ensureBeginResume(view, view.controller);
+                });
+            }
             if (!view || view.__cbInited) {
                 return;
             }
@@ -393,7 +417,10 @@
         // Channel B: loaded as a plain script by the inline bootstrap.
         window.__cbCore = {
             init: function (root) {
-                new (createViewClass())(root);
+                // Mirror the data-controller convention (viewmanager assigns
+                // view.controller itself when it runs the factory) so 4.10 transition
+                // code finds a controller even on this fallback channel.
+                root.controller = root.controller || new (createViewClass())(root);
             }
         };
     }
