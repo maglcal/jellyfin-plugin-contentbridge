@@ -15,6 +15,7 @@ ContentBridge 采集程序模板（contentbridge-feed/1）
 """
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -78,8 +79,15 @@ def fetch_raw_items():
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read().decode("utf-8"))
 
-    # ↓ 按你数据源的实际结构取列表，比如 data["data"]["list"]
-    return data["items"]
+    # ↓ 取列表：常见三种外壳都认（items / list / data.list），对不上再改这一行
+    for container in (data, data.get("data") if isinstance(data.get("data"), dict) else {}):
+        for key in ("items", "list", "vodlist", "results"):
+            if isinstance(container.get(key), list):
+                return container[key]
+
+    raise SystemExit(
+        f"接口返回里找不到条目列表（认 items/list/data.list）。实际字段：{list(data)[:10]}"
+    )
 
 
 # ============================ ② 映射成标准格式 ============================
@@ -105,9 +113,10 @@ def to_int(value):
 
 
 def absolute_url(url):
-    """播放地址规范化：完整 http(s) 直链原样返回；相对路径按 BASE_URL 拼成完整地址；
+    """播放地址规范化：剥 HTML 转义（&amp; 之类，页面抓来的地址常见）；
+    完整 http(s) 直链原样返回；相对路径按 BASE_URL 拼成完整地址；
     拼不出来 / 不是 http(s) 的返回空串（宁可跳过，也不往 .strm 里写播不了的地址）。"""
-    url = (url or "").strip()
+    url = html.unescape((url or "").strip())
     if not url:
         return ""
     if re.match(r"^https?://", url, re.I):
