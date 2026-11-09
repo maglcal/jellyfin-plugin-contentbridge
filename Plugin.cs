@@ -9,9 +9,10 @@ using MediaBrowser.Model.Serialization;
 namespace Jellyfin.Plugin.ContentBridge
 {
     /// <summary>
-    /// ContentBridge plugin entry point.
+    /// ContentBridge plugin entry point (shared across hosts; the Emby-only half —
+    /// the plugin tile image — lives in emby/Plugin.Emby.cs).
     /// </summary>
-    public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
+    public partial class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     {
         /// <inheritdoc />
         public override string Name => "ContentBridge";
@@ -38,6 +39,24 @@ namespace Jellyfin.Plugin.ContentBridge
         {
             // Host-specific page members (Jellyfin sidebar entry) are set opportunistically
             // by PluginPageCompat, so this compiles and runs on both hosts (see Compat/).
+            if (HostCompat.Detect() == HostKind.Emby)
+            {
+                // Emby injects the page HTML into the dashboard and never executes inline
+                // <script> blocks, so the Emby page declares data-controller and ships its
+                // logic as a second, non-menu page (an AMD module) — see
+                // Configuration/embyConfigPage.js.
+                return new[]
+                {
+                    PluginPageCompat.BuildEmbyMainPageInfo(
+                        Name,
+                        "ContentBridge 设置",
+                        GetType().Namespace + ".Configuration.embyConfigPage.html"),
+                    PluginPageCompat.BuildControllerPageInfo(
+                        EmbyConfigControllerName,
+                        GetType().Namespace + ".Configuration.embyConfigPage.js"),
+                };
+            }
+
             return new[]
             {
                 PluginPageCompat.BuildPageInfo(
@@ -46,5 +65,11 @@ namespace Jellyfin.Plugin.ContentBridge
                     GetType().Namespace + ".Configuration.configPage.html")
             };
         }
+
+        /// <summary>
+        /// Name of the Emby config-page controller module, matched by the page root's
+        /// data-controller="__plugin/contentbridgejs" attribute (Emby page mechanism).
+        /// </summary>
+        public const string EmbyConfigControllerName = "contentbridgejs";
     }
 }

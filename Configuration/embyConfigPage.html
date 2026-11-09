@@ -1,0 +1,95 @@
+<div is="emby-scroller" class="view flex flex-direction-column scrollFrameY flex-grow withTabs"
+     data-horizontal="false" data-forcescrollbar="true" data-centerfocus="true" data-bindheader="true"
+     data-title="ContentBridge" data-controller="__plugin/contentbridgejs">
+    <style>
+        /* Emby styles its own upgraded elements; only fix what it has no opinion about. */
+        .contentbridgeConfigRoot .cbRowBox {
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 1em;
+            margin-bottom: 1em;
+        }
+        .contentbridgeConfigRoot .cbSearchRow {
+            display: flex;
+            align-items: center;
+            gap: 1em;
+            padding: 0.6em 0;
+            border-bottom: 1px solid #333;
+        }
+    </style>
+    <div class="contentbridgeConfigRoot scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page settingsContainer">
+        <div class="sectionTitleContainer flex align-items-center">
+            <h2 class="sectionTitle">ContentBridge</h2>
+        </div>
+        <p style="color:#aaa">把外部内容接口的条目以 .strm 虚拟条目的形式注入媒体库。先把「媒体库根目录」加为 Emby 的混合媒体库，再在这里配置数据源。</p>
+
+        <form class="contentbridgeConfigForm">
+            <div class="inputContainer">
+                <input is="emby-input" type="text" id="cbLibraryRoot" label="媒体库根目录" />
+                <div class="fieldDescription">生成 .strm / .nfo / 海报的目录，例如 /media/online 或 D:\media\online</div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" type="text" id="cbPreferredQuality" label="播放线路偏好" />
+                <div class="fieldDescription">多条播放线路时优先选中名称或地址包含此关键词的线路，例如 m3u8</div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" type="text" id="cbProxyBaseUrl" label="代理基础地址（可选）" />
+                <div class="fieldDescription">生成代理播放链接时使用的对外地址，例如 http://192.168.1.10:8096 或 https://tv.example.com。留空自动取局域网地址；用域名访问 Emby 时必填</div>
+            </div>
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label><input type="checkbox" is="emby-checkbox" id="cbWriteNfo" /><span>写入 NFO 元数据</span></label>
+                <div class="fieldDescription">关掉则只生成 .strm，靠 Emby 自己刮削</div>
+            </div>
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label><input type="checkbox" is="emby-checkbox" id="cbDownloadImages" /><span>下载海报</span></label>
+                <div class="fieldDescription">已存在的海报不会重复下载</div>
+            </div>
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label><input type="checkbox" is="emby-checkbox" id="cbCleanupRemoved" /><span>清理已下架条目</span></label>
+                <div class="fieldDescription">同步时删除数据源上已不存在的条目（默认关，避免误删）</div>
+            </div>
+
+            <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
+                <h2 class="sectionTitle">自动同步</h2>
+            </div>
+            <div class="inputContainer">
+                <select is="emby-select" id="cbSyncInterval" label="同步间隔"></select>
+                <div class="fieldDescription">与 控制台 → 计划任务 → 「同步外部内容源」 是同一份设置，在这里改立即生效，不用再去计划任务里找。选「仅手动」则只在点「立即同步」时运行</div>
+            </div>
+
+            <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
+                <h2 class="sectionTitle">数据源</h2>
+            </div>
+            <div id="cbSources"></div>
+            <button is="emby-button" type="button" class="raised" id="cbAddSource"><span>添加数据源</span></button>
+
+            <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
+                <h2 class="sectionTitle">更新源</h2>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" type="text" id="cbUpdatePrimaryUrl" label="主渠道更新源地址（可选）" />
+                <div class="fieldDescription">自建镜像的 repository.json 地址，例如 https://your-repo.example.com/raw/jellyfin-plugin-contentbridge/repository.json。填写后检查更新优先走主渠道，主渠道不可用时自动降级到 GitHub 渠道；留空则只用 GitHub 渠道</div>
+            </div>
+            <button is="emby-button" type="button" class="raised" id="cbCheckUpdate"><span>检查更新</span></button>
+            <div class="fieldDescription" id="cbUpdateResult" style="margin-top:0.8em"></div>
+
+            <div class="verticalSection">
+                <button is="emby-button" type="submit" class="raised button-submit block"><span>保存</span></button>
+                <button is="emby-button" type="button" class="raised block" id="cbSyncNow" style="margin-top:1em"><span>立即同步</span></button>
+                <div class="fieldDescription" id="cbStatus" style="margin-top:0.8em"></div>
+            </div>
+        </form>
+
+        <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
+            <h2 class="sectionTitle">搜索并入库</h2>
+        </div>
+        <div class="inputContainer">
+            <select is="emby-select" id="cbSearchSource" label="数据源"></select>
+        </div>
+        <div class="inputContainer">
+            <input is="emby-input" type="text" id="cbSearchKeyword" label="关键词" />
+        </div>
+        <button is="emby-button" type="button" class="raised" id="cbSearchBtn"><span>搜索</span></button>
+        <div id="cbSearchResults" style="margin-top:1em"></div>
+    </div>
+</div>

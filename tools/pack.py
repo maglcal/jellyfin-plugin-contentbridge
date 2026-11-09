@@ -36,11 +36,18 @@ EMBY_INSTALL = """ContentBridge for Emby - install
 ================================
 
 1. Stop the Emby server.
-2. Copy Emby.Plugin.ContentBridge.dll into the Emby plugins folder
-   (usually programdata/plugins under the Emby installation).
+2. Copy Emby.Plugin.ContentBridge.dll into the Emby plugins folder,
+   directly (no subfolder):
+   - Windows/Linux install: programdata/plugins under the Emby installation
+   - Docker (e.g. linuxserver/emby): <config>/plugins
 3. Start the Emby server.
 4. Open the plugin settings (Plugins -> ContentBridge) and configure
    your content sources, library root and sync schedule.
+
+When upgrading inside a Docker container, restart the whole container
+after replacing the DLL (not just the server process) - overwriting the
+DLL in place can make the container read the old file length and fail
+with BadImageFormatException.
 
 Supported: Emby 4.8.x / 4.10.x. The same plugin also ships for Jellyfin
 (contentbridge_<version>.zip).

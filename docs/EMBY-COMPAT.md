@@ -113,6 +113,19 @@
   - 版本基线统一 0.3.0.1（csproj AssemblyVersion/FileVersion 对齐）。
 - **M4 收尾 ✅**：README 补 Emby 安装与版本适配；测试审核清单（docs/TEST-REVIEW.md）交用户；
   `.gitignore` 隔离 `refs/`（Emby 专有程序集绝不入公开仓库）、`dist/`、apidump 输出。
+- **首轮真机测试修复（v0.3.0.2）**：
+  - **设置页空白（linuxserver/emby 复现）**：Emby 的配置页机制与 Jellyfin 不同——Emby 把页面 HTML 注入仪表盘后
+    **不执行内联 `<script>`**，页面逻辑必须是 `data-controller="__plugin/{name}"` 指向的**独立 AMD 模块**
+    （`define(['baseView','loading',...])` 导出 View）。修复：新增 `Configuration/embyConfigPage.html`
+    （`emby-scroller` 根 + data-controller）与 `Configuration/embyConfigPage.js`（BaseView 控制器，移植
+    Jellyfin 页全部逻辑），`GetPages()` 按 `HostCompat.Detect()` 分支注册（Emby 注册 HTML 页 + js 控制器两页，
+    Jellyfin 维持内联脚本页）。双宿主配置页机制不同是宿主差异的一部分，各配一套页面符合"差异收敛"原则。
+  - **插件无图标**：Emby 的 "My Plugins" 缩略图自 3.6 起由插件经 **`IHasThumbImage`**（MediaBrowser.Common.dll）
+    + 嵌入资源提供（Jellyfin 是 meta.json imagePath 机制，且无此接口）。修复：`emby/Plugin.Emby.cs`
+    （partial，仅 Emby 编译）实现 `GetThumbImage()/ThumbImageFormat`，`Configuration/thumb.png`
+    （640×360，16:9）以 LogicalName `Jellyfin.Plugin.ContentBridge.Configuration.thumb.png` 嵌入。
+  - 版本升 **v0.3.0.2**（分支测试产物递增）；INSTALL.txt 补"容器内换 DLL 重启整个容器"提示
+    （原位覆盖可能 BadImageFormatException）。cbtest 69/69、三路构建全绿。
 
 ---
 

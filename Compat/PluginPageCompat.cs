@@ -34,5 +34,44 @@ namespace Jellyfin.Plugin.ContentBridge.Compat
             HostCompat.TrySetOptionalProperty(page, "EnableInMainMenu", true);
             return page;
         }
+
+        /// <summary>
+        /// Build the main config-page registration for the Emby page mechanism
+        /// (IsMainConfigPage marks it as the plugin's settings page). Optional members are
+        /// set opportunistically so this compiles against either host's reference surface.
+        /// </summary>
+        /// <param name="name">Page name (plugin name).</param>
+        /// <param name="displayName">Display name.</param>
+        /// <param name="embeddedResourcePath">Embedded Emby config page resource path.</param>
+        /// <returns>The page info to register.</returns>
+        public static PluginPageInfo BuildEmbyMainPageInfo(string name, string displayName, string embeddedResourcePath)
+        {
+            var page = new PluginPageInfo
+            {
+                Name = name,
+                DisplayName = displayName,
+                EmbeddedResourcePath = embeddedResourcePath,
+            };
+
+            HostCompat.TrySetOptionalProperty(page, "IsMainConfigPage", true);
+            HostCompat.TrySetOptionalProperty(page, "EnableInMainMenu", true);
+            return page;
+        }
+
+        /// <summary>
+        /// Build a non-menu page registration — used for the Emby config page's AMD
+        /// controller module (referenced by the page root's data-controller attribute).
+        /// </summary>
+        /// <param name="name">Module name (data-controller="__plugin/{name}").</param>
+        /// <param name="embeddedResourcePath">Embedded .js resource path.</param>
+        /// <returns>The page info to register.</returns>
+        public static PluginPageInfo BuildControllerPageInfo(string name, string embeddedResourcePath)
+        {
+            return new PluginPageInfo
+            {
+                Name = name,
+                EmbeddedResourcePath = embeddedResourcePath,
+            };
+        }
     }
 }

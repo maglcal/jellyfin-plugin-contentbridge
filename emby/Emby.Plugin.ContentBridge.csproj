@@ -10,8 +10,8 @@
     <Company>许诺</Company>
     <Copyright>Copyright (C) 2026 许诺</Copyright>
     <Description>Inject external content-source feeds into the Emby library (strm virtual entries)</Description>
-    <AssemblyVersion>0.3.0.1</AssemblyVersion>
-    <FileVersion>0.3.0.1</FileVersion>
+    <AssemblyVersion>0.3.0.2</AssemblyVersion>
+    <FileVersion>0.3.0.2</FileVersion>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
@@ -51,9 +51,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Same embedded resource name as the Jellyfin build (Plugin.GetPages contract). -->
-    <EmbeddedResource Include="..\Configuration\configPage.html"
-                      LogicalName="Jellyfin.Plugin.ContentBridge.Configuration.configPage.html" />
+    <!--
+      Emby page mechanism: the HTML page (data-controller host) plus its AMD controller
+      module, and the plugin tile image read via IHasThumbImage. Logical names follow the
+      Plugin.GetPages contract (namespace + .Configuration.*).
+    -->
+    <EmbeddedResource Include="..\Configuration\embyConfigPage.html"
+                      LogicalName="Jellyfin.Plugin.ContentBridge.Configuration.embyConfigPage.html" />
+    <EmbeddedResource Include="..\Configuration\embyConfigPage.js"
+                      LogicalName="Jellyfin.Plugin.ContentBridge.Configuration.embyConfigPage.js" />
+    <EmbeddedResource Include="..\Configuration\thumb.png"
+                      LogicalName="Jellyfin.Plugin.ContentBridge.Configuration.thumb.png" />
   </ItemGroup>
 
 </Project>
