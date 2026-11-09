@@ -1,20 +1,19 @@
 using System;
 using System.IO;
-using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.ContentBridge.Compat;
 using MediaBrowser.Controller;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ContentBridge.Services
 {
     /// <summary>
     /// Local stream proxy: fetches play urls with the source's User-Agent / Referer headers and
     /// relays the response. HLS playlists are rewritten so their segments go through the proxy too.
+    /// Host response handling is expressed through <see cref="ProxyExchange"/> so this class
+    /// compiles and runs on both Jellyfin and Emby.
     /// </summary>
     public sealed class StreamProxyService
     {
@@ -24,12 +23,12 @@ namespace Jellyfin.Plugin.ContentBridge.Services
         };
 
         private readonly IServerApplicationHost _appHost;
-        private readonly ILogger<StreamProxyService> _logger;
+        private readonly ILogSink _log;
 
-        public StreamProxyService(IServerApplicationHost appHost, ILogger<StreamProxyService> logger)
+        public StreamProxyService(IServerApplicationHost appHost, ILogSink log)
         {
             _appHost = appHost;
-            _logger = logger;
+            _log = log ?? NullLogSink.Instance;
         }
 
         /// <summary>
@@ -65,7 +64,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             try
             {
-                var url = _appHost?.GetLocalApiUrl(null, null, null);
+                var url = HostApiUrlCompat.GetLocalApiUrl(_appHost);
                 if (!string.IsNullOrWhiteSpace(url))
                 {
                     return url.TrimEnd('/');
@@ -73,7 +72,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             }
             catch (Exception ex)
             {
-                _logger.LogDebug("Local api url fallback failed: {Error}", ex.Message);
+                _log.Debug("Local api url fallback failed: " + ex.Message);
             }
 
             return "http://127.0.0.1:8096";
@@ -120,9 +119,9 @@ namespace Jellyfin.Plugin.ContentBridge.Services
         }
 
         /// <summary>
-        /// Proxy the target url into the current HTTP response.
+        /// Proxy the target url into the current HTTP exchange.
         /// </summary>
-        public async Task ProxyAsync(HttpContext context, SourceConfig source, string targetUrl, CancellationToken ct)
+        public async Task ProxyAsync(ProxyExchange exchange, SourceConfig source, string targetUrl, CancellationToken ct)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, targetUrl);
 
@@ -139,10 +138,9 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 }
             }
 
-            var range = context.Request.Headers["Range"].ToString();
-            if (!string.IsNullOrEmpty(range))
+            if (!string.IsNullOrEmpty(exchange.RangeHeader))
             {
-                request.Headers.TryAddWithoutValidation("Range", range);
+                request.Headers.TryAddWithoutValidation("Range", exchange.RangeHeader);
             }
 
             using var upstream = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
@@ -153,30 +151,30 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             if (isPlaylist && upstream.IsSuccessStatusCode)
             {
-                await WritePlaylistAsync(context, upstream, targetUrl, source?.Name ?? string.Empty, ct).ConfigureAwait(false);
+                await WritePlaylistAsync(exchange, upstream, targetUrl, source?.Name ?? string.Empty, ct).ConfigureAwait(false);
                 return;
             }
 
-            context.Response.StatusCode = (int)upstream.StatusCode;
+            exchange.SetStatusCode?.Invoke((int)upstream.StatusCode);
             if (!string.IsNullOrEmpty(contentType))
             {
-                context.Response.ContentType = contentType;
+                exchange.SetContentType?.Invoke(contentType);
             }
 
-            CopyHeader(upstream, context, "Content-Length");
-            CopyHeader(upstream, context, "Content-Range");
-            CopyHeader(upstream, context, "Accept-Ranges");
+            CopyHeader(upstream, exchange, "Content-Length");
+            CopyHeader(upstream, exchange, "Content-Range");
+            CopyHeader(upstream, exchange, "Accept-Ranges");
 
-            if (upstream.Content.Headers.ContentLength > 0 && !context.Response.Headers.ContainsKey("Content-Length"))
+            if (upstream.Content.Headers.ContentLength > 0 && exchange.SetContentLength != null)
             {
-                context.Response.ContentLength = upstream.Content.Headers.ContentLength;
+                exchange.SetContentLength(upstream.Content.Headers.ContentLength.Value);
             }
 
             await using var body = await upstream.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            await body.CopyToAsync(context.Response.Body, ct).ConfigureAwait(false);
+            await body.CopyToAsync(exchange.Body, ct).ConfigureAwait(false);
         }
 
-        private async Task WritePlaylistAsync(HttpContext context, HttpResponseMessage upstream, string targetUrl, string sourceName, CancellationToken ct)
+        private async Task WritePlaylistAsync(ProxyExchange exchange, HttpResponseMessage upstream, string targetUrl, string sourceName, CancellationToken ct)
         {
             var text = await upstream.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             var baseUri = new Uri(targetUrl);
@@ -200,11 +198,11 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 }
             }
 
-            context.Response.StatusCode = (int)upstream.StatusCode;
-            context.Response.ContentType = "application/vnd.apple.mpegurl";
+            exchange.SetStatusCode?.Invoke((int)upstream.StatusCode);
+            exchange.SetContentType?.Invoke("application/vnd.apple.mpegurl");
             var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-            context.Response.ContentLength = bytes.Length;
-            await context.Response.Body.WriteAsync(bytes, ct).ConfigureAwait(false);
+            exchange.SetContentLength?.Invoke(bytes.Length);
+            await exchange.Body.WriteAsync(bytes, ct).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -232,12 +230,11 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             return line.Substring(0, start) + proxied + line.Substring(end);
         }
 
-        private static void CopyHeader(HttpResponseMessage upstream, HttpContext context, string name)
+        private static void CopyHeader(HttpResponseMessage upstream, ProxyExchange exchange, string name)
         {
-            if (upstream.Content.Headers.TryGetValues(name, out var values))
+            if (exchange.SetHeader != null && upstream.Content.Headers.TryGetValues(name, out var values))
             {
-                context.Response.Headers[name] = new Microsoft.Extensions.Primitives.StringValues(
-                    System.Linq.Enumerable.ToArray(values));
+                exchange.SetHeader(name, string.Join(", ", values));
             }
         }
     }

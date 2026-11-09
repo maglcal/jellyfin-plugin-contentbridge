@@ -58,15 +58,17 @@ namespace Jellyfin.Plugin.ContentBridge.Compat
 
         /// <summary>
         /// Build the trigger list for a schedule value (pure, host-free).
-        /// Null or 0 means manual only.
+        /// Null or 0 means manual only. Returns an array because Emby workers expose
+        /// <c>Triggers</c> as <c>TaskTriggerInfo[]</c> while Jellyfin exposes
+        /// <c>IReadOnlyList&lt;TaskTriggerInfo&gt;</c> (an array satisfies both).
         /// </summary>
         /// <param name="intervalHours">Interval in hours, or null/0 for manual.</param>
         /// <returns>The trigger list to assign to the task.</returns>
-        public static IReadOnlyList<TaskTriggerInfo> BuildTriggers(double? intervalHours)
+        public static TaskTriggerInfo[] BuildTriggers(double? intervalHours)
         {
             return intervalHours.HasValue && intervalHours.Value > 0
-                ? TaskTriggerCompat.BuildIntervalTriggers(intervalHours.Value)
-                : TaskTriggerCompat.BuildManualTriggers();
+                ? TaskTriggerCompat.BuildIntervalTriggers(intervalHours.Value).ToArray()
+                : TaskTriggerCompat.BuildManualTriggers().ToArray();
         }
 
         /// <summary>
@@ -95,6 +97,12 @@ namespace Jellyfin.Plugin.ContentBridge.Compat
             }
 
             worker.Triggers = BuildTriggers(intervalHours);
+
+            // Emby workers need ReloadTriggerEvents() to reschedule after a Triggers
+            // change; Jellyfin has no such method — probe opportunistically.
+            var reload = worker.GetType().GetMethod("ReloadTriggerEvents", Type.EmptyTypes);
+            reload?.Invoke(worker, null);
+
             return ReadSchedule(worker);
         }
     }

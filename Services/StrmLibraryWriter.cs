@@ -8,8 +8,8 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Jellyfin.Plugin.ContentBridge.Compat;
 using Jellyfin.Plugin.ContentBridge.Models;
-using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ContentBridge.Services
 {
@@ -40,12 +40,12 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
         private static readonly Regex HtmlTagRegex = new Regex("<[^>]+>", RegexOptions.Compiled);
 
-        private readonly ILogger<StrmLibraryWriter> _logger;
+        private readonly ILogSink _log;
         private readonly StreamProxyService _proxy;
 
-        public StrmLibraryWriter(ILogger<StrmLibraryWriter> logger, StreamProxyService proxy)
+        public StrmLibraryWriter(ILogSink log, StreamProxyService proxy)
         {
-            _logger = logger;
+            _log = log ?? NullLogSink.Instance;
             _proxy = proxy;
         }
 
@@ -78,16 +78,14 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             var episodes = playLine?.Episodes ?? new List<PlayEpisode>();
             if (episodes.Count == 0)
             {
-                _logger.LogDebug("Skip {Name}: no playable url", entry.Name);
+                _log.Debug($"Skip {entry.Name}: no playable url");
                 return written;
             }
 
             if (droppedUrls > 0)
             {
-                _logger.LogWarning(
-                    "Entry {Name}: skipped {Count} episode url(s) that are not absolute http(s) links",
-                    entry.Name,
-                    droppedUrls);
+                _log.Warn(
+                    $"Entry {entry.Name}: skipped {droppedUrls} episode url(s) that are not absolute http(s) links");
             }
 
             var displayName = CleanTitle(entry.Name);
@@ -214,7 +212,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning("Failed to delete {Path}: {Error}", rel, ex.Message);
+                    _log.Warn($"Failed to delete {rel}: {ex.Message}");
                 }
             }
         }
@@ -461,7 +459,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogDebug("Poster download failed for {Url}: {Error}", url, ex.Message);
+                _log.Debug($"Poster download failed for {url}: {ex.Message}");
                 return false;
             }
         }

@@ -88,7 +88,31 @@
   - 宿主探测经验：**Jellyfin 10.10.x 程序集名仍是 MediaBrowser.\***（NuGet 包才叫 Jellyfin.\*），照程序集名探不出宿主；
     可靠标记是 Jellyfin.Data/Jellyfin.Extensions（Jellyfin 独有）与 Emby.Server.Implementations/Emby.Naming（Emby 独有）。
   - cbtest 69/69 全绿（含 9 条 compat 用例）。
-- **M2 待做**：Emby 引用面接入（Emby 4.8 程序集获取）、双包构建矩阵（薄壳 csproj × 2）、RouteHostCompat 的 Emby 绑定层。
+- **M2 双包构建 + Emby 绑定层 ✅**：
+  - **Emby API 面实测钉死**（apidump 反射实测 4.8.11.0 / 4.10.2.0，落盘 `tools/apidump/out-*.txt`）：
+    服务路由 = ServiceStack 风格（请求 DTO 挂 `MediaBrowser.Model.Services.RouteAttribute(path, verbs)` + `IReturn<T>`，服务类实现 `IService`（`IRequiresRequest` 拿 `IRequest`）；
+    `IScheduledTask.Execute(CancellationToken, IProgress<double>)`（与 Jellyfin 的 `ExecuteAsync` 签名漂移）；`IScheduledTaskWorker.Triggers` 为 `TaskTriggerInfo[]` 数组 + `ReloadTriggerEvents()`；
+    `GetLocalApiUrl` 三套重载按形状反射解析；日志是 Emby 自家 `MediaBrowser.Model.Logging.ILogger`（**ME.Logging.Abstractions 不在 .NET 共享框架、Emby 包也不带**）；
+    `BasePlugin<TConfiguration>` ctor 与 Jellyfin 完全同形（`IApplicationPaths, IXmlSerializer`）；404 抛 `MediaBrowser.Common.Extensions.ResourceNotFoundException`；
+    ServiceStack.Text 序列化按属性名原样（PascalCase）→ 配置页 JS 无需大小写垫片。
+  - **共享层三缝**（差异全部收敛，核心零分叉）：`Compat/ILogSink.cs`（自研日志缝，绕开 ME.Logging 缺席；
+    Jellyfin 侧 `PluginServiceRegistrator` 工厂适配 ILoggerFactory，Emby 侧 `emby/EmbyLogSink.cs` 适配自家 ILogger）、
+    `Compat/HostApiUrlCompat.cs`（GetLocalApiUrl 重载形状反射缝）、`Compat/ProxyExchange.cs`（代理交换对象缝，
+    Stream 逻辑与宿主 HTTP 上下文解耦）；`Tasks/SyncTaskCore.cs` 任务核 + 每宿主薄壳（`Tasks/SyncContentTask.cs` / `emby/EmbyScheduledTask.cs`）。
+  - **Emby 绑定层七件套**（`emby/`）：`Emby.Plugin.ContentBridge.csproj`（net6.0，共享 `..\**\*.cs` 源 + Exclude 清单，
+    引用 `refs/emby/{4.8|4.10}/` MediaBrowser 三件 + System.IO.Pipelines（Private=false 绝不打包）；`-p:EmbyRefVersion=4.10` 切换验证）、
+    `EmbyLogSink`、`ServiceRoot`（Emby 组合根：惰性构建 + `EnsureAttached` 幂等接线，服务/任务由宿主容器自动发现构造）、
+    `EmbyScheduledTask`、`EmbyServiceContracts`（6 管理 DTO + 匿名流 DTO，字段名与 ApiContracts 一致）、
+    `EmbyContentBridgeService`（六端点）、`EmbyStreamService`（直写 `IResponse` 保 206 透传）。
+  - **构建矩阵三路全绿**：Jellyfin net8 Release 0 警告 0 错误；Emby 4.8 Release 0/0；Emby 4.10 验证构建 0/0
+    （4.10 引用面的 System.IO.Pipelines 用 NuGet **lib/net6.0** 资产——net8 资产会 CS1705 System.Runtime 8>6）。
+  - **cbtest 69/69 全绿**（双宿主不变量零回退；ProxyAsync 换 ProxyExchange 后 cbtest 走 `Api/HttpContextProxyExchange` 适配器，断言零改动）。
+- **M3 双包产出 ✅**（构建级；真机冒烟并入 M4 测试审核清单）：
+  - `tools/pack.py` 双包打包：`dist/contentbridge_0.3.0.1.zip`（Jellyfin DLL + meta.json + icon.png，md5=d66290da2b26c6d910573aebb961de0d）、
+    `dist/contentbridge-emby_0.3.0.1.zip`（Emby DLL + INSTALL.txt，md5=f44e84face52c4b70c71b925990c6ab5）。
+  - 版本基线统一 0.3.0.1（csproj AssemblyVersion/FileVersion 对齐）。
+- **M4 收尾 ✅**：README 补 Emby 安装与版本适配；测试审核清单（docs/TEST-REVIEW.md）交用户；
+  `.gitignore` 隔离 `refs/`（Emby 专有程序集绝不入公开仓库）、`dist/`、apidump 输出。
 
 ---
 

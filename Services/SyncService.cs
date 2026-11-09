@@ -5,8 +5,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.ContentBridge.Compat;
 using Jellyfin.Plugin.ContentBridge.Models;
-using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ContentBridge.Services
 {
@@ -20,14 +20,14 @@ namespace Jellyfin.Plugin.ContentBridge.Services
         private readonly ContentApiClient _client;
         private readonly FeedClient _feed;
         private readonly StrmLibraryWriter _writer;
-        private readonly ILogger<SyncService> _logger;
+        private readonly ILogSink _log;
 
-        public SyncService(ContentApiClient client, FeedClient feed, StrmLibraryWriter writer, ILogger<SyncService> logger)
+        public SyncService(ContentApiClient client, FeedClient feed, StrmLibraryWriter writer, ILogSink log)
         {
             _client = client;
             _feed = feed;
             _writer = writer;
-            _logger = logger;
+            _log = log ?? NullLogSink.Instance;
         }
 
         /// <summary>
@@ -46,7 +46,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
             if (string.IsNullOrWhiteSpace(config.LibraryRoot))
             {
-                _logger.LogWarning("ContentBridge: LibraryRoot is not configured, sync skipped");
+                _log.Warn("ContentBridge: LibraryRoot is not configured, sync skipped");
                 return;
             }
 
@@ -58,7 +58,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             if (sources.Count == 0)
             {
-                _logger.LogInformation("ContentBridge: no enabled sources, nothing to do");
+                _log.Info("ContentBridge: no enabled sources, nothing to do");
                 return;
             }
 
@@ -72,7 +72,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogError("ContentBridge: sync failed for source {Source}: {Error}", source.Name, ex.Message);
+                    _log.Error($"ContentBridge: sync failed for source {source.Name}: {ex.Message}", ex);
                 }
 
                 progress?.Report((i + 1) * 100.0 / sources.Count);
@@ -139,12 +139,9 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                     DeleteEntry(manifest, source.Name, id, config.LibraryRoot);
                 }
 
-                _logger.LogInformation(
-                    "ContentBridge: feed source {Source} synced {Count} title(s), {Skipped} unchanged, {Deleted} removed",
-                    source.Name,
-                    plan.Upserts.Count,
-                    plan.SkippedIds.Count,
-                    plan.TombstoneIds.Count);
+                _log.Info(
+                    $"ContentBridge: feed source {source.Name} synced {plan.Upserts.Count} title(s), "
+                    + $"{plan.SkippedIds.Count} unchanged, {plan.TombstoneIds.Count} removed");
                 return;
             }
 
@@ -180,7 +177,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 }
             }
 
-            _logger.LogInformation("ContentBridge: source {Source} synced {Count} title(s)", source.Name, fetched);
+            _log.Info($"ContentBridge: source {source.Name} synced {fetched} title(s)");
         }
 
         private async Task CleanupAsync(PluginConfiguration config, ManifestData manifest, CancellationToken ct)
@@ -199,9 +196,8 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                         {
                             // delta feed 只表达变更，不是完整清单；全量清理会误删正常条目。
                             // 下架请在 feed 里用 deleted 墓碑表达。
-                            _logger.LogInformation(
-                                "ContentBridge: cleanup skipped for {Source}: delta feed (use deleted tombstones instead)",
-                                source.Name);
+                            _log.Info(
+                                $"ContentBridge: cleanup skipped for {source.Name}: delta feed (use deleted tombstones instead)");
                             continue;
                         }
 
@@ -214,7 +210,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning("ContentBridge: cleanup skipped for {Source}: {Error}", source.Name, ex.Message);
+                    _log.Warn($"ContentBridge: cleanup skipped for {source.Name}: {ex.Message}");
                     continue;
                 }
 
@@ -228,7 +224,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 {
                     _writer.Delete(entries[id], config.LibraryRoot);
                     entries.Remove(id);
-                    _logger.LogInformation("ContentBridge: removed stale entry {Id} from {Source}", id, source.Name);
+                    _log.Info($"ContentBridge: removed stale entry {id} from {source.Name}");
                 }
             }
         }
@@ -290,7 +286,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 stamps.Remove(id);
             }
 
-            _logger.LogInformation("ContentBridge: tombstone removed entry {Id} from {Source}", id, sourceName);
+            _log.Info($"ContentBridge: tombstone removed entry {id} from {sourceName}");
         }
 
         private static void UpdateManifest(ManifestData manifest, string sourceName, string vodId, IReadOnlyList<string> paths, string updated = null)

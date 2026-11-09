@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Emby 4.8 runs on the .NET 6 runtime; net6.0 assemblies also load on Emby 4.10 (.NET 8). -->
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.ContentBridge</RootNamespace>
+    <AssemblyName>Emby.Plugin.ContentBridge</AssemblyName>
+    <AssemblyTitle>ContentBridge</AssemblyTitle>
+    <Product>ContentBridge</Product>
+    <Company>许诺</Company>
+    <Copyright>Copyright (C) 2026 许诺</Copyright>
+    <Description>Inject external content-source feeds into the Emby library (strm virtual entries)</Description>
+    <AssemblyVersion>0.3.0.1</AssemblyVersion>
+    <FileVersion>0.3.0.1</FileVersion>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Override with -p:EmbyRefVersion=4.10 to verify the build against Emby 4.10 refs. -->
+    <EmbyRefVersion Condition="'$(EmbyRefVersion)' == ''">4.8</EmbyRefVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Shared core sources, compiled a second time against the Emby reference surface
+      (single source, dual build — see docs/EMBY-COMPAT.md). Jellyfin-only binding files
+      (Api/ MVC controllers, PluginServiceRegistrator, the Jellyfin task shell) are excluded.
+    -->
+    <Compile Include="..\**\*.cs"
+             Exclude="..\Api\**;..\PluginServiceRegistrator.cs;..\Tasks\SyncContentTask.cs;..\tools\**;..\refs\**;..\obj\**;..\bin\**;..\emby\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Host reference surface (local compile refs, never bundled; refs/ is gitignored). -->
+    <Reference Include="MediaBrowser.Common">
+      <HintPath>..\refs\emby\$(EmbyRefVersion)\MediaBrowser.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MediaBrowser.Controller">
+      <HintPath>..\refs\emby\$(EmbyRefVersion)\MediaBrowser.Controller.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MediaBrowser.Model">
+      <HintPath>..\refs\emby\$(EmbyRefVersion)\MediaBrowser.Model.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- PipeWriter (IResponse.OutputWriter) — exact assembly Emby ships. -->
+    <Reference Include="System.IO.Pipelines">
+      <HintPath>..\refs\emby\$(EmbyRefVersion)\System.IO.Pipelines.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same embedded resource name as the Jellyfin build (Plugin.GetPages contract). -->
+    <EmbeddedResource Include="..\Configuration\configPage.html"
+                      LogicalName="Jellyfin.Plugin.ContentBridge.Configuration.configPage.html" />
+  </ItemGroup>
+
+</Project>

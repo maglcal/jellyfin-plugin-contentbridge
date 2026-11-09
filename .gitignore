@@ -2,3 +2,12 @@ bin/
 obj/
 *.user
 .vs/
+
+# release artifacts
+/dist/
+
+# proprietary reference assemblies (fetched locally, never committed)
+/refs/
+
+# reflection dumps (regenerate via tools/apidump)
+tools/apidump/out-*.txt

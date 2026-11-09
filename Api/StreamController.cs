@@ -53,7 +53,7 @@ namespace Jellyfin.Plugin.ContentBridge.Api
 
             try
             {
-                await _proxy.ProxyAsync(HttpContext, source, target, ct).ConfigureAwait(false);
+                await _proxy.ProxyAsync(HttpContextProxyExchange.FromHttpContext(HttpContext), source, target, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

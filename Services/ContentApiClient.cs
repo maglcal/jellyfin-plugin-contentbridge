@@ -8,8 +8,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Jellyfin.Plugin.ContentBridge.Compat;
 using Jellyfin.Plugin.ContentBridge.Models;
-using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ContentBridge.Services
 {
@@ -21,11 +21,11 @@ namespace Jellyfin.Plugin.ContentBridge.Services
     {
         private static readonly HttpClient Http = CreateClient();
 
-        private readonly ILogger<ContentApiClient> _logger;
+        private readonly ILogSink _log;
 
-        public ContentApiClient(ILogger<ContentApiClient> logger)
+        public ContentApiClient(ILogSink log)
         {
-            _logger = logger;
+            _log = log ?? NullLogSink.Instance;
         }
 
         private static HttpClient CreateClient()
@@ -89,7 +89,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning("Content source {Source} id listing failed: {Error}", source.Name, ex.Message);
+                    _log.Warn($"Content source {source.Name} id listing failed: {ex.Message}");
                     break;
                 }
 

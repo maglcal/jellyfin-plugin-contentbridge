@@ -119,7 +119,7 @@ namespace Jellyfin.Plugin.ContentBridge.Compat
         /// <returns>The schedule, or null when the sync task is not registered (host registration problem).</returns>
         public SyncScheduleInfo GetSchedule()
         {
-            var worker = TaskHostCompat.FindTask(_taskManager, SyncContentTask.TaskKey);
+            var worker = TaskHostCompat.FindTask(_taskManager, SyncTaskCore.TaskKey);
             return TaskHostCompat.ReadSchedule(worker);
         }
 
@@ -131,7 +131,7 @@ namespace Jellyfin.Plugin.ContentBridge.Compat
         /// <returns>The updated schedule state.</returns>
         public SyncScheduleInfo SetSchedule(double? intervalHours)
         {
-            var worker = TaskHostCompat.FindTask(_taskManager, SyncContentTask.TaskKey);
+            var worker = TaskHostCompat.FindTask(_taskManager, SyncTaskCore.TaskKey);
             return TaskHostCompat.ApplySchedule(worker, intervalHours);
         }
 
