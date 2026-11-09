@@ -46,6 +46,16 @@
                 <div id="cbSources"></div>
                 <button is="emby-button" type="button" class="raised" id="cbAddSource"><span>添加数据源</span></button>
 
+                <div class="sectionTitleContainer flex align-items-center" style="margin-top:2em">
+                    <h2 class="sectionTitle">更新源</h2>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="cbUpdatePrimaryUrl" label="主渠道更新源地址（可选）" />
+                    <div class="fieldDescription">自建镜像的 repository.json 地址，例如 https://your-repo.example.com/raw/jellyfin-plugin-contentbridge/repository.json。填写后检查更新优先走主渠道，主渠道不可用时自动降级到 GitHub 渠道；留空则只用 GitHub 渠道</div>
+                </div>
+                <button is="emby-button" type="button" class="raised" id="cbCheckUpdate"><span>检查更新</span></button>
+                <div class="fieldDescription" id="cbUpdateResult" style="margin-top:0.8em"></div>
+
                 <div class="verticalSection">
                     <button is="emby-button" type="submit" class="raised button-submit block"><span>保存</span></button>
                     <button is="emby-button" type="button" class="raised block" id="cbSyncNow" style="margin-top:1em"><span>立即同步</span></button>
@@ -183,6 +193,7 @@
                 page.querySelector('#cbWriteNfo').checked = config.WriteNfo !== false;
                 page.querySelector('#cbDownloadImages').checked = config.DownloadImages !== false;
                 page.querySelector('#cbCleanupRemoved').checked = config.CleanupRemoved === true;
+                page.querySelector('#cbUpdatePrimaryUrl').value = config.UpdatePrimaryUrl || '';
                 renderSources(config.Sources || []);
             }
 
@@ -243,6 +254,7 @@
                 config.WriteNfo = page.querySelector('#cbWriteNfo').checked;
                 config.DownloadImages = page.querySelector('#cbDownloadImages').checked;
                 config.CleanupRemoved = page.querySelector('#cbCleanupRemoved').checked;
+                config.UpdatePrimaryUrl = page.querySelector('#cbUpdatePrimaryUrl').value.trim();
                 config.Sources = collectSources();
                 Promise.all([
                     ApiClient.updatePluginConfiguration(pluginId, config),
@@ -267,6 +279,39 @@
             page.querySelector('#cbSyncNow').addEventListener('click', function () {
                 status('同步已启动，进度见 控制台 → 计划任务');
                 apiPost('ContentBridge/sync').catch(function () { });
+            });
+
+            page.querySelector('#cbCheckUpdate').addEventListener('click', function () {
+                var out = page.querySelector('#cbUpdateResult');
+                out.textContent = '检查中…';
+                Dashboard.showLoadingMsg();
+                apiGet('ContentBridge/update-check', { primary: page.querySelector('#cbUpdatePrimaryUrl').value.trim() }).then(function (res) {
+                    Dashboard.hideLoadingMsg();
+                    if (!res || !res.Success) {
+                        out.textContent = '检查失败：' + ((res && res.Error) || '两个渠道都不可用');
+                        return;
+                    }
+                    out.textContent = '当前 ' + (res.CurrentVersion || '?') + ' · 最新 ' + (res.LatestVersion || '?')
+                        + ' · ' + (res.Degraded ? '备用渠道（主渠道不可用，已自动降级）' : (res.Channel === 'primary' ? '主渠道' : 'GitHub 渠道'));
+                    if (res.UpdateAvailable) {
+                        var line = document.createElement('div');
+                        line.textContent = '有新版本，下载地址：';
+                        var a = document.createElement('a');
+                        a.textContent = res.DownloadUrl || '(清单未提供下载地址)';
+                        if (/^https?:\/\//i.test(res.DownloadUrl || '')) {
+                            a.href = res.DownloadUrl;
+                            a.target = '_blank';
+                            a.rel = 'noopener';
+                        }
+                        line.appendChild(a);
+                        out.appendChild(line);
+                    } else {
+                        out.textContent += ' · 已是最新';
+                    }
+                }).catch(function () {
+                    Dashboard.hideLoadingMsg();
+                    out.textContent = '检查失败，网络不可达';
+                });
             });
 
             page.querySelector('#cbSearchBtn').addEventListener('click', function () {

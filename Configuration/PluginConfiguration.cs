@@ -49,6 +49,13 @@ namespace Jellyfin.Plugin.ContentBridge
         public string ProxyKey { get; set; } = string.Empty;
 
         /// <summary>
+        /// Gets or sets the primary update-catalog url (e.g. a self-hosted mirror of repository.json).
+        /// When set, update checks try this channel first and automatically fall back to the
+        /// built-in GitHub channel whenever it is unreachable. Leave empty to use GitHub only.
+        /// </summary>
+        public string UpdatePrimaryUrl { get; set; } = string.Empty;
+
+        /// <summary>
         /// Gets or sets the configured content sources.
         /// </summary>
         public List<SourceConfig> Sources { get; set; } = new List<SourceConfig>();

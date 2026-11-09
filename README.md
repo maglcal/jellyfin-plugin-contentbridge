@@ -28,15 +28,26 @@ Jellyfin 混合媒体库（Movies + Shows）→ 海报墙 / 搜索 / 全客户�
 
 ### 方式一：插件存储库安装（推荐）
 
-1. Jellyfin 控制台 → 插件 → 存储库 → 添加，填入：
+1. Jellyfin 控制台 → 插件 → 存储库 → 添加，填入**任一渠道**的存储库地址（两渠道内容一致）：
 
-   ```
-   https://raw.githubusercontent.com/maglcal/jellyfin-plugin-contentbridge/main/repository.json
-   ```
+   - **主渠道（自建镜像，国内推荐）**：填自己部署的镜像存储库地址，格式如
+
+     ```
+     https://your-repo.example.com/raw/jellyfin-plugin-contentbridge/repository.json
+     ```
+
+     （镜像地址属私人部署，不公开；把上面的占位域名换成自己的镜像域名即可）
+
+   - **备用渠道（GitHub）**：
+
+     ```
+     https://raw.githubusercontent.com/maglcal/jellyfin-plugin-contentbridge/main/repository.json
+     ```
 
 2. 插件 → 目录 → 找到 ContentBridge → 安装，重启 Jellyfin。
 
-后续发新版本时目录里会直接提示更新，不用手动换 DLL。
+后续发新版本时目录里会直接提示更新，不用手动换 DLL。配置页「更新源」里填了主渠道地址后，
+「检查更新」会**优先走主渠道、主渠道不可用时自动降级到 GitHub 渠道**，并报告最新版本与下载地址。
 
 ### 方式二：手动安装
 
@@ -60,6 +71,8 @@ Jellyfin 混合媒体库（Movies + Shows）→ 海报墙 / 搜索 / 全客户�
 2. **数据源**：填接口地址（形如 `https://host/api.php/provide/vod/`），可配分类 ID 过滤和每次同步条数。
 3. **播放线路偏好**：多条线路时优先匹配关键词（如 `m3u8`）。
 4. **搜索并入库**：配置页底部按关键词搜数据源，点「入库」立刻生成条目（免等同步）。
+5. **更新源**：可填自建镜像的 repository.json 作为主渠道，「检查更新」优先走主渠道，
+   不可用时自动降级到 GitHub 渠道；留空则只用 GitHub 渠道。实际更新安装仍走 Jellyfin 插件目录。
 
 同步进度看 控制台 → 计划任务 → 同步外部内容源（默认每 6 小时，可改）。
 
@@ -110,14 +123,21 @@ Jellyfin.Plugin.ContentBridge/
 ├── PluginServiceRegistrator.cs  # DI 注册（同步服务 / 计划任务）
 ├── Configuration/
 │   ├── PluginConfiguration.cs   # 配置项 + 数据源模型
-│   └── configPage.html          # 配置页（数据源编辑 / 搜索入库 / 立即同步）
+│   └── configPage.html          # 配置页（数据源编辑 / 搜索入库 / 立即同步 / 更新源）
 ├── Models/Vod.cs                # 内容接口数据模型
 ├── Services/
 │   ├── ContentApiClient.cs      # 接口协议解析（JSON / XML）
+│   ├── FeedClient.cs            # 自定义 Feed（contentbridge-feed/1）解析
 │   ├── StrmLibraryWriter.cs     # .strm / NFO / 海报写入
-│   └── SyncService.cs           # 同步编排 + 清单管理
-├── Tasks/SyncContentTask.cs     # 计划任务
-└── Api/ContentBridgeController.cs  # search / add / sync 接口
+│   ├── StreamProxyService.cs    # 本地流代理（UA/Referer、HLS 改写、Range）
+│   ├── SyncService.cs           # 同步编排 + 清单管理
+│   └── UpdateChecker.cs         # 双渠道更新检测（镜像主渠道 → GitHub 降级）
+├── Tasks/
+│   ├── SyncContentTask.cs       # 计划任务
+│   └── TaskTriggerCompat.cs     # 10.10/10.11 触发器兼容层
+└── Api/
+    ├── ContentBridgeController.cs  # search / add / sync / schedule / update-check 接口
+    └── StreamController.cs      # 代理播放端点
 ```
 
 ## License

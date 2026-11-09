@@ -176,6 +176,25 @@ namespace Jellyfin.Plugin.ContentBridge.Api
             return GetSchedule();
         }
 
+        /// <summary>
+        /// Check for plugin updates: the primary channel (self-hosted mirror, configured in the
+        /// plugin settings) is tried first and falls back to the GitHub channel automatically.
+        /// The optional "primary" query overrides the saved value so the check button works
+        /// before saving.
+        /// </summary>
+        [HttpGet("update-check")]
+        public async Task<ActionResult<UpdateCheckResult>> CheckUpdate(
+            [FromQuery] string primary,
+            CancellationToken cancellationToken)
+        {
+            var config = Plugin.Instance?.Configuration;
+            var primaryUrl = string.IsNullOrWhiteSpace(primary) ? config?.UpdatePrimaryUrl : primary;
+            var current = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "0.0.0.0";
+            var checker = new UpdateChecker(UpdateChecker.CreateDefaultFetcher());
+            var result = await checker.CheckAsync(primaryUrl, current, cancellationToken).ConfigureAwait(false);
+            return result;
+        }
+
         private IScheduledTaskWorker FindSyncWorker()
         {
             return _taskManager.ScheduledTasks.FirstOrDefault(
