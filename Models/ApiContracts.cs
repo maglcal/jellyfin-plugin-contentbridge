@@ -41,4 +41,20 @@ namespace Jellyfin.Plugin.ContentBridge.Models
         /// <summary>Gets or sets the interval in hours. Null or 0 disables auto sync (manual only).</summary>
         public double? IntervalHours { get; set; }
     }
+
+    /// <summary>
+    /// Outcome of a full sync run. Per-source failures are reported here instead of being
+    /// silently logged, so the UI and the scheduled task can show what actually happened.
+    /// </summary>
+    public class SyncRunResult
+    {
+        /// <summary>Gets or sets the number of sources synced successfully.</summary>
+        public int Succeeded { get; set; }
+
+        /// <summary>Gets or sets the number of sources that failed.</summary>
+        public int Failed { get; set; }
+
+        /// <summary>Gets or sets the human-readable problem list ("source: message" per failing source).</summary>
+        public List<string> Errors { get; set; } = new List<string>();
+    }
 }

@@ -115,7 +115,12 @@
                     data: body ? JSON.stringify(body) : null,
                     contentType: 'application/json',
                     dataType: 'json'
-                })).then(normalize);
+                })).then(normalize).catch(function (e) {
+                    // Turn opaque rejections into a readable message for the status line.
+                    var msg = (e && (e.message || e.statusText)) || '请求出错';
+                    if (e && e.status) msg = 'HTTP ' + e.status;
+                    throw new Error(msg);
+                });
             }
 
             function sourceRow(s) {
@@ -281,8 +286,20 @@
             });
 
             page.querySelector('#cbSyncNow').addEventListener('click', function () {
-                status('同步已启动，进度见 控制台 → 计划任务');
-                apiPost('ContentBridge/sync').catch(function () { });
+                status('同步中，请稍候…');
+                apiPost('ContentBridge/sync').then(function (res) {
+                    var errors = (res && res.Errors) || [];
+                    if (res && res.Failed > 0) {
+                        status('同步结束：成功 ' + res.Succeeded + ' 个数据源，失败 ' + res.Failed + ' 个——'
+                            + errors.join('；'));
+                    } else if (errors.length) {
+                        status('同步结束：' + errors.join('；'));
+                    } else {
+                        status('同步完成：成功 ' + ((res && res.Succeeded) || 0) + ' 个数据源');
+                    }
+                }).catch(function (err) {
+                    status('同步失败：' + ((err && err.message) || '请求出错，详见服务端日志'));
+                });
             });
 
             page.querySelector('#cbCheckUpdate').addEventListener('click', function () {

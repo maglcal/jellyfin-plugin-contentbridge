@@ -74,13 +74,14 @@ namespace Jellyfin.Plugin.ContentBridge.Api
         }
 
         /// <summary>
-        /// Kick off a full sync right away (fire and forget).
+        /// Run a full sync right away and report the per-source outcome (errors included).
         /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Per-source sync outcome.</returns>
         [HttpPost("sync")]
-        public IActionResult SyncNow()
+        public async Task<ActionResult<SyncRunResult>> SyncNow(CancellationToken cancellationToken)
         {
-            _routes.SyncNow();
-            return Accepted();
+            return await _routes.SyncNowAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>

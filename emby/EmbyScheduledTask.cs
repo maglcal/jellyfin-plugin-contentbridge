@@ -39,7 +39,13 @@ namespace Jellyfin.Plugin.ContentBridge.EmbyBinding
         /// <inheritdoc />
         public async Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
-            await ServiceRoot.SyncService.RunAsync(progress, cancellationToken).ConfigureAwait(false);
+            var result = await ServiceRoot.SyncService.RunAsync(progress, cancellationToken).ConfigureAwait(false);
+            if (result.Failed > 0)
+            {
+                // Surface per-source failures in 计划任务 instead of reporting a green run.
+                throw new InvalidOperationException(
+                    $"{result.Failed} 个数据源同步失败：{string.Join("；", result.Errors)}");
+            }
         }
 
         /// <inheritdoc />

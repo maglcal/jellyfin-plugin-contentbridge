@@ -41,7 +41,13 @@ namespace Jellyfin.Plugin.ContentBridge.Tasks
         /// <inheritdoc />
         public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
-            await _syncService.RunAsync(progress, cancellationToken).ConfigureAwait(false);
+            var result = await _syncService.RunAsync(progress, cancellationToken).ConfigureAwait(false);
+            if (result.Failed > 0)
+            {
+                // Surface per-source failures in 计划任务 instead of reporting a green run.
+                throw new InvalidOperationException(
+                    $"{result.Failed} 个数据源同步失败：{string.Join("；", result.Errors)}");
+            }
         }
 
         /// <inheritdoc />

@@ -126,6 +126,28 @@
     （640×360，16:9）以 LogicalName `Jellyfin.Plugin.ContentBridge.Configuration.thumb.png` 嵌入。
   - 版本升 **v0.3.0.2**（分支测试产物递增）；INSTALL.txt 补"容器内换 DLL 重启整个容器"提示
     （原位覆盖可能 BadImageFormatException）。cbtest 69/69、三路构建全绿。
+- **第二轮真机测试修复（v0.3.0.3）**：
+  - **官方版"同步外部源报错"**：错误语义重做。`SyncService.RunAsync` 改返回 `SyncRunResult`（成功/失败源计数 +
+    逐源错误文本）；`Directory.CreateDirectory(LibraryRoot)` 包上带路径与原因的明确异常（"媒体库根目录不可用（路径）：
+    原因……请检查是否为绝对路径/磁盘存在/进程有写权限"）；两版计划任务壳在有失败源时抛汇总错误
+    （"N 个数据源同步失败：源: 原因；……"），不再假绿。`POST /ContentBridge/sync` 从 fire-and-forget 改为
+    **等待完成并返回结果 JSON**，两版配置页「立即同步」直接回显成功/失败与错误原文（旧实现吞掉一切错误只提示"已启动"）。
+  - **docker 版设置页仍空白**（v0.3.0.2 的 AMD 页未生效，根因未定——版本差异 / 浏览器或服务端缓存 / 旧 DLL 残留三线并查，
+    详见 TEST-REVIEW.md 定位问题区）：加载链全面加固：
+    ① 控制器改**零 AMD 依赖** `define([], ...)`——实证 4.8/4.10 的 viewmanager 用 `require([url]).then(...)` 加载控制器，
+    任一依赖解析不了就永远不落 → 页面挂死；自定义元素模块（emby-input 等）改绑定期后 best-effort 异步加载（纯样式，缺了不影响功能）；
+    ② 页面根同时带 `class="view"` 与 `data-role="page"`（两代 normalizeNewView 的选择器都命中），加稳定 id；
+    ③ 内联引导双通道：旧宿主执行内联脚本时动态 `<script>` 加载同一核心（临时隐藏 define 走非 AMD 导出分支），
+    新宿主走 data-controller AMD 分支，两通道共用一份 `bind(view)` 核心、`__cbInited` 防双绑；
+    ④ 生命周期钩子显式空实现（4.8 无条件调用 onPause、4.10 对缺钩子的控制器自动包 BaseView）；
+    ⑤ 全失败路径写页面状态行 + 顶部诊断提示（Ctrl+F5 指引；提示行可见=HTML 已加载，整页空白=资源没加载，二分定位）。
+  - **web 机制考古实证**（refs/_downloads 官方包提取，4.8.11 netcore + 4.10.2 freebsd）：
+    viewmanager 两代一致——`text!` 取页 HTML → `innerHTML`（内联脚本永不动行，无任何重执行路径）→
+    `querySelector('.view,div[data-role="page"]')` 提根（不命中→空白卡住）→ `data-controller="__plugin/x"` →
+    `require([getConfigurationResourceUrl(x)])` → `deps[0]` 为控制器工厂（reject→挂死）；
+    `allowPluginPages` 的 restrictedplugins 白名单在浏览器 apphost 特性表中**不存在**（仅原生 App 生效）——白名单论排除；
+    4.8/4.10 index.html importmap 均含 baseView/loading/emby-* 全套模块名。
+  - 版本升 **v0.3.0.3**；cbtest 69/69、三路构建全绿。
 
 ---
 

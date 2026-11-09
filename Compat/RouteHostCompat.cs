@@ -96,21 +96,27 @@ namespace Jellyfin.Plugin.ContentBridge.Compat
         }
 
         /// <summary>
-        /// Kick off a full sync right away (fire and forget).
+        /// Run a full sync right away and report the outcome. Fatal setup problems are
+        /// folded into the result so the caller can always show the user what happened.
         /// </summary>
-        public void SyncNow()
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Per-source sync outcome.</returns>
+        public async Task<SyncRunResult> SyncNowAsync(CancellationToken cancellationToken)
         {
-            _ = Task.Run(async () =>
+            try
             {
-                try
-                {
-                    await _syncService.RunAsync(null, CancellationToken.None).ConfigureAwait(false);
-                }
-                catch
-                {
-                    // logged inside RunAsync; never let a background sync crash the host
-                }
-            });
+                return await _syncService.RunAsync(null, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Fatal setup errors (e.g. library root unusable) become a result instead of
+                // an opaque HTTP 500 — the config page shows the message verbatim.
+                return new SyncRunResult { Errors = { ex.Message } };
+            }
         }
 
         /// <summary>

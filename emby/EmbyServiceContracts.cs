@@ -36,7 +36,7 @@ namespace Jellyfin.Plugin.ContentBridge.EmbyBinding
     /// <summary>POST /ContentBridge/sync.</summary>
     [Authenticated]
     [Route("/ContentBridge/sync", "POST")]
-    public class EmbySyncRequest : IReturnVoid
+    public class EmbySyncRequest : IReturn<SyncRunResult>
     {
     }
 

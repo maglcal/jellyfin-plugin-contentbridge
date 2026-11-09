@@ -1,13 +1,26 @@
 /*
- * Emby configuration-page controller.
+ * Emby configuration-page controller (shared by two boot channels).
  *
- * Emby injects a plugin page's HTML into the dashboard, so inline <script> blocks in the
- * page never execute. The page therefore declares data-controller="__plugin/contentbridgejs"
- * and Emby loads this AMD module, whose exported View is bound to the page element.
+ * Channel A — modern Emby web (4.8.x / 4.10.x): the page root declares
+ *   data-controller="__plugin/contentbridgejs"; the dashboard loads THIS file as an AMD
+ *   module and instantiates the exported View. (Inline <script> blocks in plugin pages
+ *   never execute there — the page HTML is inserted via innerHTML.)
+ *
+ * Channel B — older dashboards that do execute inline scripts: embyConfigPage.html's
+ *   inline bootstrap loads THIS file as a plain <script> with window.define hidden, then
+ *   calls window.__cbCore.init(root).
+ *
+ * Robustness rules learned from two rounds of real-host testing:
+ *   - the module declares NO AMD dependencies (a single unresolvable dependency makes the
+ *     view activation hang forever → blank page);
+ *   - Emby custom-element modules are loaded best-effort AFTER bind (pure styling; plain
+ *     inputs still work if they never load);
+ *   - every failure path ends in a visible #cbStatus message, never a silent spinner.
+ *
  * (Jellyfin uses a different convention — see configPage.html, which carries the same
- * logic as an inline script. Keep both in sync.)
+ * field logic as an inline script. Keep both in sync.)
  */
-define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'emby-select', 'emby-scroller'], function (BaseView, loading) {
+(function () {
     'use strict';
 
     var pluginId = 'b42fcd11-31f8-40fb-b605-77fc7b182edc';
@@ -32,27 +45,37 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
     function apiPost(path, body) {
         var url = ApiClient.getUrl(path);
         var payload = body ? JSON.stringify(body) : null;
-        if (typeof ApiClient.ajax === 'function') {
-            return Promise.resolve(ApiClient.ajax({
-                type: 'POST',
-                url: url,
-                data: payload,
-                contentType: 'application/json',
-                dataType: 'json'
-            })).then(normalize);
+
+        function request() {
+            if (typeof ApiClient.ajax === 'function') {
+                return Promise.resolve(ApiClient.ajax({
+                    type: 'POST',
+                    url: url,
+                    data: payload,
+                    contentType: 'application/json',
+                    dataType: 'json'
+                })).then(normalize);
+            }
+            // Fallback: plain fetch with the session token.
+            var token = '';
+            try {
+                token = (typeof ApiClient.accessToken === 'function') ? ApiClient.accessToken() : (ApiClient.accessToken || '');
+            } catch (e) { /* leave empty */ }
+            return fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Emby-Token': token },
+                body: payload
+            }).then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text().then(function (t) { try { return JSON.parse(t); } catch (e) { return null; } });
+            });
         }
-        // Fallback: plain fetch with the session token.
-        var token = '';
-        try {
-            token = (typeof ApiClient.accessToken === 'function') ? ApiClient.accessToken() : (ApiClient.accessToken || '');
-        } catch (e) { /* leave empty */ }
-        return fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Emby-Token': token },
-            body: payload
-        }).then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.text().then(function (t) { try { return JSON.parse(t); } catch (e) { return null; } });
+
+        return request().catch(function (e) {
+            // Turn opaque rejections into a readable message for the status line.
+            var msg = (e && (e.message || e.statusText)) || '请求出错';
+            if (e && e.status) msg = 'HTTP ' + e.status;
+            throw new Error(msg);
         });
     }
 
@@ -60,6 +83,8 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         var el = view.querySelector('#cbStatus');
         if (el) el.textContent = text || '';
     }
+
+    // ---- form rendering / collection --------------------------------------
 
     function sourceRow(view, s) {
         var div = document.createElement('div');
@@ -188,7 +213,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         }
         var hours = parseFloat(v) || 0;
         return apiPost('ContentBridge/schedule', { IntervalHours: hours > 0 ? hours : null })
-            .catch(function () { return Promise.reject(new Error('schedule')); });
+            .catch(function () { return Promise.reject(new Error('自动同步计划保存失败')); });
     }
 
     function loadConfig(view) {
@@ -199,19 +224,25 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             fillForm(view, results[0] || {});
             fillSchedule(view, results[1]);
             status(view, '');
-            loading.hide();
         }, function () {
             status(view, '配置加载失败，请刷新重试');
-            loading.hide();
         });
     }
 
-    function View(view) {
-        BaseView.apply(this, arguments);
+    // ---- page binding (single entry used by both boot channels) -----------
+
+    function bind(view) {
+        // Best-effort: upgrade Emby custom elements (styling only; plain inputs work
+        // without them). Fire-and-forget so a missing module can never hang the page.
+        if (typeof require === 'function') {
+            try {
+                require(['emby-input', 'emby-button', 'emby-checkbox', 'emby-select', 'emby-scroller'], function () { }, function () { });
+            } catch (e) { /* ignore */ }
+        }
 
         view.querySelector('.contentbridgeConfigForm').addEventListener('submit', function (e) {
             e.preventDefault();
-            loading.show();
+            status(view, '保存中…');
             ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                 config = config || {};
                 config.LibraryRoot = view.querySelector('#cbLibraryRoot').value.trim();
@@ -227,12 +258,10 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                     saveSchedule(view)
                 ]);
             }).then(function () {
-                loading.hide();
                 status(view, '已保存');
                 refreshSourceSelect(view);
-            }, function () {
-                loading.hide();
-                status(view, '保存失败');
+            }, function (err) {
+                status(view, '保存失败：' + ((err && err.message) || '请检查网络与服务端日志'));
             });
             return false;
         });
@@ -244,16 +273,26 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         });
 
         view.querySelector('#cbSyncNow').addEventListener('click', function () {
-            status(view, '同步已启动，进度见 控制台 → 计划任务');
-            apiPost('ContentBridge/sync').catch(function () { });
+            status(view, '同步中，请稍候…');
+            apiPost('ContentBridge/sync').then(function (res) {
+                var errors = (res && res.Errors) || [];
+                if (res && res.Failed > 0) {
+                    status(view, '同步结束：成功 ' + res.Succeeded + ' 个数据源，失败 ' + res.Failed + ' 个——'
+                        + errors.join('；'));
+                } else if (errors.length) {
+                    status(view, '同步结束：' + errors.join('；'));
+                } else {
+                    status(view, '同步完成：成功 ' + ((res && res.Succeeded) || 0) + ' 个数据源');
+                }
+            }, function (err) {
+                status(view, '同步失败：' + ((err && err.message) || '请求出错，详见服务端日志'));
+            });
         });
 
         view.querySelector('#cbCheckUpdate').addEventListener('click', function () {
             var out = view.querySelector('#cbUpdateResult');
             out.textContent = '检查中…';
-            loading.show();
             apiGet('ContentBridge/update-check', { primary: view.querySelector('#cbUpdatePrimaryUrl').value.trim() }).then(function (res) {
-                loading.hide();
                 if (!res || !res.Success) {
                     out.textContent = '检查失败：' + ((res && res.Error) || '两个渠道都不可用');
                     return;
@@ -276,7 +315,6 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                     out.textContent += ' · 已是最新';
                 }
             }, function () {
-                loading.hide();
                 out.textContent = '检查失败，网络不可达';
             });
         });
@@ -290,9 +328,9 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                 status(view, '请选择数据源并输入关键词');
                 return;
             }
-            loading.show();
+            status(view, '搜索中…');
             apiGet('ContentBridge/search', { source: source, keyword: keyword }).then(function (list) {
-                loading.hide();
+                status(view, '');
                 (list || []).slice(0, 30).forEach(function (item) {
                     var row = document.createElement('div');
                     row.className = 'cbSearchRow';
@@ -304,13 +342,11 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                     btn.className = 'raised';
                     btn.innerHTML = '<span>入库</span>';
                     btn.addEventListener('click', function () {
-                        loading.show();
+                        status(view, '入库中…');
                         apiPost('ContentBridge/add', { Source: source, VodId: item.Id }).then(function (res) {
-                            loading.hide();
                             status(view, '已入库：' + ((res && res.Files && res.Files.length) || 0) + ' 个文件，稍后自动刮削');
-                        }, function () {
-                            loading.hide();
-                            status(view, '入库失败，请检查数据源与网络');
+                        }, function (err) {
+                            status(view, '入库失败：' + ((err && err.message) || '请检查数据源与网络'));
                         });
                     });
                     row.appendChild(label);
@@ -321,19 +357,44 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                     results.textContent = '无结果';
                 }
             }, function () {
-                loading.hide();
                 status(view, '搜索失败，检查接口地址与网络');
             });
         });
+
+        loadConfig(view);
     }
 
-    Object.assign(View.prototype, BaseView.prototype);
+    function createViewClass() {
+        function View(view) {
+            if (!view || view.__cbInited) {
+                return;
+            }
+            view.__cbInited = true;
+            try {
+                bind(view);
+            } catch (e) {
+                status(view, '页面初始化失败：' + ((e && e.message) || e));
+            }
+        }
 
-    View.prototype.onResume = function (options) {
-        BaseView.prototype.onResume.apply(this, arguments);
-        loading.show();
-        loadConfig(this.view);
-    };
+        // Lifecycle stubs: 4.8 calls these unconditionally on navigation when present;
+        // 4.10 auto-wraps bare controllers with BaseView only when BOTH are missing, so
+        // defining them here keeps behavior identical on every web build.
+        View.prototype.onResume = function () { };
+        View.prototype.onPause = function () { };
 
-    return View;
-});
+        return View;
+    }
+
+    if (typeof define === 'function' && define.amd) {
+        // Channel A: loaded as the page's data-controller AMD module.
+        define([], createViewClass);
+    } else {
+        // Channel B: loaded as a plain script by the inline bootstrap.
+        window.__cbCore = {
+            init: function (root) {
+                new (createViewClass())(root);
+            }
+        };
+    }
+})();

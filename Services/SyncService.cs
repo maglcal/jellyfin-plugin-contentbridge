@@ -40,17 +40,37 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
         /// <summary>
         /// Run a full sync across all enabled sources.
+        ///
+        /// Per-source failures are collected into the returned result instead of being
+        /// swallowed, so both the scheduled task and the config page can show what actually
+        /// went wrong. Only fatal setup problems (library root unusable) throw.
         /// </summary>
-        public async Task RunAsync(IProgress<double> progress, CancellationToken ct)
+        /// <param name="progress">Progress sink, or null.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Per-source sync outcome.</returns>
+        public async Task<SyncRunResult> RunAsync(IProgress<double> progress, CancellationToken ct)
         {
             var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+            var result = new SyncRunResult();
             if (string.IsNullOrWhiteSpace(config.LibraryRoot))
             {
+                result.Errors.Add("媒体库根目录未配置，已跳过（请先在插件设置页填写并保存）");
                 _log.Warn("ContentBridge: LibraryRoot is not configured, sync skipped");
-                return;
+                return result;
             }
 
-            Directory.CreateDirectory(config.LibraryRoot);
+            try
+            {
+                Directory.CreateDirectory(config.LibraryRoot);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"媒体库根目录不可用（{config.LibraryRoot}）：{ex.Message}。"
+                    + "请检查是否为绝对路径、所在磁盘是否存在、服务进程是否有写权限",
+                    ex);
+            }
+
             var manifest = LoadManifest(config.LibraryRoot);
             var sources = (config.Sources ?? new List<SourceConfig>())
                 .Where(s => s.Enabled && !string.IsNullOrWhiteSpace(s.ApiUrl))
@@ -58,8 +78,9 @@ namespace Jellyfin.Plugin.ContentBridge.Services
 
             if (sources.Count == 0)
             {
+                result.Errors.Add("没有启用的数据源，无事可做");
                 _log.Info("ContentBridge: no enabled sources, nothing to do");
-                return;
+                return result;
             }
 
             for (var i = 0; i < sources.Count; i++)
@@ -69,9 +90,12 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 try
                 {
                     await SyncSourceAsync(source, config, manifest, ct).ConfigureAwait(false);
+                    result.Succeeded++;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    result.Failed++;
+                    result.Errors.Add($"{source.Name}: {ex.Message}");
                     _log.Error($"ContentBridge: sync failed for source {source.Name}: {ex.Message}", ex);
                 }
 
@@ -85,6 +109,8 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 await CleanupAsync(config, manifest, ct).ConfigureAwait(false);
                 SaveManifest(config.LibraryRoot, manifest);
             }
+
+            return result;
         }
 
         /// <summary>
@@ -98,7 +124,18 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                 throw new InvalidOperationException("LibraryRoot 未配置");
             }
 
-            Directory.CreateDirectory(config.LibraryRoot);
+            try
+            {
+                Directory.CreateDirectory(config.LibraryRoot);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"媒体库根目录不可用（{config.LibraryRoot}）：{ex.Message}。"
+                    + "请检查是否为绝对路径、所在磁盘是否存在、服务进程是否有写权限",
+                    ex);
+            }
+
             var entry = IsFeedSource(source)
                 ? (await _feed.LoadAsync(source, ct).ConfigureAwait(false))
                     .Items

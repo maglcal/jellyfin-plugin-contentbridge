@@ -60,11 +60,10 @@ namespace Jellyfin.Plugin.ContentBridge.EmbyBinding
             return result;
         }
 
-        /// <summary>POST /ContentBridge/sync.</summary>
-        public object Post(EmbySyncRequest request)
+        /// <summary>POST /ContentBridge/sync — runs the sync and reports the per-source outcome.</summary>
+        public async Task<object> Post(EmbySyncRequest request)
         {
-            _routes.SyncNow();
-            return null;
+            return await _routes.SyncNowAsync(Request.CancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>GET /ContentBridge/schedule.</summary>
