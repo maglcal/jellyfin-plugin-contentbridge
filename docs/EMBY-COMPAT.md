@@ -76,6 +76,20 @@
 | Emby 版本碎片（4.7/4.8） | 以 4.8 为基准，兼容性问题按版本记录在本文件 |
 | 双包行为漂移 | cbtest 共用 + 同一 feed 样本双宿主比对 .strm/NFO 输出逐字节一致 |
 
+## 7. 实施进度
+
+- **M1 兼容层骨架 ✅**（分支已并入 main 的双渠道更新检测，功能全对齐基线）：
+  - `Compat/` 五件套落地：`HostCompat`（运行时宿主探测 + 反射工具 `TrySetOptionalProperty`）、
+    `PluginPageCompat`（插件注册：配置页 PageInfo，MenuIcon/EnableInMainMenu 反射可选设置）、
+    `ConfigHostCompat`（配置存取：Current/VersionString）、`TaskHostCompat`（任务注册：任务查找 + 调度读写，
+    触发器差异仍由 TaskTriggerCompat 反射层消化）、`RouteHostCompat`（路由宿主：宿主无关端点处理器，
+    Jellyfin MVC 控制器已薄壳化，DTO 共享至 `Models/ApiContracts.cs`）。
+  - `Services/` 四个核心类零改动；web 端 ApiClient 差异封装点在 configPage 的 apiGet/apiPost/normalize 小工具层（已标注）。
+  - 宿主探测经验：**Jellyfin 10.10.x 程序集名仍是 MediaBrowser.\***（NuGet 包才叫 Jellyfin.\*），照程序集名探不出宿主；
+    可靠标记是 Jellyfin.Data/Jellyfin.Extensions（Jellyfin 独有）与 Emby.Server.Implementations/Emby.Naming（Emby 独有）。
+  - cbtest 69/69 全绿（含 9 条 compat 用例）。
+- **M2 待做**：Emby 引用面接入（Emby 4.8 程序集获取）、双包构建矩阵（薄壳 csproj × 2）、RouteHostCompat 的 Emby 绑定层。
+
 ---
 
 *很庆幸曾经遇见你，遗憾的是只是遇见你——许诺*

@@ -87,6 +87,10 @@
                 page.querySelector('#cbStatus').textContent = text || '';
             }
 
+            // ---- host-diff helper layer (Compat seam) ----------------------------
+            // Emby/Jellyfin web ApiClient result shapes differ; every host call goes
+            // through normalize/apiGet/apiPost below so host drift stays in one place.
+
             // normalize ApiClient.ajax results across apiclient versions
             function normalize(r) {
                 if (r == null) return null;

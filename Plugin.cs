@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Jellyfin.Plugin.ContentBridge.Compat;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
@@ -35,16 +36,14 @@ namespace Jellyfin.Plugin.ContentBridge
         /// <inheritdoc />
         public IEnumerable<PluginPageInfo> GetPages()
         {
+            // Host-specific page members (Jellyfin sidebar entry) are set opportunistically
+            // by PluginPageCompat, so this compiles and runs on both hosts (see Compat/).
             return new[]
             {
-                new PluginPageInfo
-                {
-                    Name = Name,
-                    DisplayName = "ContentBridge 设置",
-                    MenuIcon = "sync_alt",
-                    EnableInMainMenu = true,
-                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.configPage.html"
-                }
+                PluginPageCompat.BuildPageInfo(
+                    Name,
+                    "ContentBridge 设置",
+                    GetType().Namespace + ".Configuration.configPage.html")
             };
         }
     }
