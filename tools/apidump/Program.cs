@@ -1,3 +1,5 @@
+// Copyright (C) 2026 许诺
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 using System.IO;

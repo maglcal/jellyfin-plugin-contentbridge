@@ -1,3 +1,5 @@
+# Copyright (C) 2026 许诺
+# SPDX-License-Identifier: GPL-2.0-only
 #!/usr/bin/env python3
 """Pack release/test zips for both hosts.
 

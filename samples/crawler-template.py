@@ -1,3 +1,5 @@
+# Copyright (C) 2026 许诺
+# SPDX-License-Identifier: GPL-2.0-only
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -131,7 +133,7 @@ def absolute_url(url):
 
 def parse_play_lines(play_value, from_value=""):
     """解析播放数据，三种形态通吃，返回 contentbridge-feed/1 的 playLines：
-    ① 单条直链        https://cdn.x.com/index.m3u8
+    ① 单条直链        https://cdn.example.com/index.m3u8
     ② 相对地址        /upload/index.m3u8（自动拼 BASE_URL）
     ③ 复合播放串      分集名$url#分集名$url$$$线路2#分集名$url
                       （苹果CMS vod_play_url 风格：$ 分名址、# 分集、$$$ 分线路）

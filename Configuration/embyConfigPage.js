@@ -1,3 +1,5 @@
+// Copyright (C) 2026 许诺
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Emby configuration-page controller (shared by two boot channels).
  *
