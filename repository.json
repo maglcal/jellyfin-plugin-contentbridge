@@ -31,6 +31,14 @@
         "checksum": "5ff686749f7219bfbdea2a6587a34f35",
         "targetAbi": "10.10.0.0",
         "timestamp": "2026-11-07T06:44:20Z"
+      },
+      {
+        "version": "0.4.0",
+        "changelog": "Emby support: separate Emby plugin package for 4.8/4.9/4.10 (ServiceStack-style routes, shared sync core, per-host scheduled-task shells); view-transition crash fix for Emby 4.10 (onBeginResume) with generation-guarded hooks; copyright headers across all sources and open-source scope defined (plugin + contentbridge-feed/1 standard public, author's own feed implementation kept private).",
+        "sourceUrl": "https://github.com/maglcal/jellyfin-plugin-contentbridge/releases/download/main-v0.4.0/contentbridge_main-v0.4.0.zip",
+        "checksum": "710ab54baa47f06f80105a0e10085669",
+        "targetAbi": "10.10.0.0",
+        "timestamp": "2026-11-12T07:32:39Z"
       }
     ]
   }
