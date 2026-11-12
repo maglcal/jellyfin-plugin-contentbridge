@@ -6,7 +6,7 @@
 条目以 `.strm` 虚拟条目 + NFO + 海报的形式落到媒体库目录，Jellyfin 原生刮削、搜索、播放，
 播放走外部链路不占盘，插件版本升级免疫（不碰内核 API）。
 
-**状态**：已在真实 Jellyfin 环境实测（同步入库、刮削、播放均正常）。
+**状态**：已在真实 Jellyfin 环境实测（同步入库、刮削、播放均正常）；Emby 4.8.x/4.10.x 兼容包测试中（见 [docs/EMBY-COMPAT.md](docs/EMBY-COMPAT.md)）。
 
 ## 工作原理
 
@@ -64,6 +64,18 @@ Jellyfin 混合媒体库（Movies + Shows）→ 海报墙 / 搜索 / 全客户�
 
 3. 重启 Jellyfin，在 控制台 → 插件 里能看到 ContentBridge。
 
+### Emby 安装（4.8.x / 4.10.x）
+
+Emby 端走手动安装（Emby 没有插件存储库机制）：
+
+1. 从 [Releases](https://github.com/maglcal/jellyfin-plugin-contentbridge/releases) 下载 `contentbridge-emby_x.y.z.zip`，解出 `Emby.Plugin.ContentBridge.dll`；
+2. 停掉 Emby 服务，把 DLL 拷进 Emby 插件目录（一般为安装目录下 `programdata/plugins`）；
+3. 启动 Emby，在 插件 → ContentBridge → 设置 里配置，配置页与 Jellyfin 版完全一致。
+
+功能与 Jellyfin 版完全对齐（数据源 / 同步 / 虚拟库 / 代理播放 / 计划任务）。计划任务入口在
+Emby 控制台 → 计划任务 → 同步外部内容源。注意：侧栏菜单入口是 Jellyfin 专有能力，Emby 端请走
+插件设置的常规入口。
+
 ## 配置
 
 1. **媒体库根目录**：生成文件的目录。保存后，在 控制台 → 媒体库 添加该目录，类型选「混合电影与剧集」。
@@ -107,6 +119,9 @@ Jellyfin 混合媒体库（Movies + Shows）→ 海报墙 / 搜索 / 全客户�
   `Tasks/SyncContentTask.cs` 用反射赋值兼容两代，无需手动改代码；
 - 插件 meta.json 的 `targetAbi` 为 `10.10.0.0`，10.10 及以上都能从存储库看到并安装。
 
+**Emby 4.8.x / 4.10.x**：同一套核心源码经宿主兼容层（`Compat/`）双编译产出独立的 Emby 包，
+目标框架 net6.0（4.10 运行时向上加载正常），安装见上文「Emby 安装」。
+
 ## 已知限制
 
 - ~~播放地址需要可直连~~ **v0.2 已解决**：数据源开启「走本地代理」后，.strm 走本地代理端点，自动带源的 User-Agent/Referer 请求头；HLS（m3u8）会改写播放列表，分片/密钥同样走代理。开启代理的源改配置后需重新同步刷新 .strm。
@@ -145,6 +160,10 @@ Jellyfin.Plugin.ContentBridge/
 [GPL-2.0](LICENSE) © 2026 许诺
 
 与 Jellyfin 本体的 GPL-2.0 许可保持一致，可自由使用、修改、分发，衍生作品需同样以 GPL-2.0 发布。
+
+**开源边界**：本仓库开源范围 = ContentBridge 插件本体 + `contentbridge-feed/1` 接口标准
+（FEED-SPEC.md、采集程序开发指南、演示模板）。**标准公开、实现自留**——作者自用的采集程序
+及其协议实现属核心技术，不开源、不随本仓库分发；欢迎按标准自行实现采集程序接入生态。
 
 ---
 

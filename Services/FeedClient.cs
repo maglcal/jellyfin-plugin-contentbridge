@@ -1,3 +1,5 @@
+// Copyright (C) 2026 许诺
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,8 +8,8 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.ContentBridge.Compat;
 using Jellyfin.Plugin.ContentBridge.Models;
-using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ContentBridge.Services
 {
@@ -24,11 +26,11 @@ namespace Jellyfin.Plugin.ContentBridge.Services
             Timeout = TimeSpan.FromSeconds(60)
         };
 
-        private readonly ILogger<FeedClient> _logger;
+        private readonly ILogSink _log;
 
-        public FeedClient(ILogger<FeedClient> logger)
+        public FeedClient(ILogSink log)
         {
-            _logger = logger;
+            _log = log ?? NullLogSink.Instance;
         }
 
         /// <summary>
@@ -69,7 +71,7 @@ namespace Jellyfin.Plugin.ContentBridge.Services
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        _logger.LogWarning("Feed file {File} skipped: {Error}", file, ex.Message);
+                        _log.Warn($"Feed file {file} skipped: {ex.Message}");
                         continue;
                     }
 

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 许诺
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Linq;
 using System.Threading;
@@ -53,7 +55,7 @@ namespace Jellyfin.Plugin.ContentBridge.Api
 
             try
             {
-                await _proxy.ProxyAsync(HttpContext, source, target, ct).ConfigureAwait(false);
+                await _proxy.ProxyAsync(HttpContextProxyExchange.FromHttpContext(HttpContext), source, target, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

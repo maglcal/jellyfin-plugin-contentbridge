@@ -1,3 +1,5 @@
+// Copyright (C) 2026 许诺
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -9,13 +11,15 @@ namespace Jellyfin.Plugin.ContentBridge.Tasks
 {
     /// <summary>
     /// Scheduled task that syncs all enabled content sources into the library.
+    /// (Jellyfin shell over <see cref="SyncTaskCore"/> — the Emby build uses its own thin
+    /// shell because <c>IScheduledTask.Execute</c> has a different signature there.)
     /// </summary>
     public class SyncContentTask : IScheduledTask
     {
         /// <summary>
         /// The task key, also used to look the task up via <c>ITaskManager</c>.
         /// </summary>
-        public const string TaskKey = "ContentBridgeSync";
+        public const string TaskKey = SyncTaskCore.TaskKey;
 
         private readonly SyncService _syncService;
 
@@ -25,29 +29,33 @@ namespace Jellyfin.Plugin.ContentBridge.Tasks
         }
 
         /// <inheritdoc />
-        public string Name => "同步外部内容源";
+        public string Name => SyncTaskCore.Name;
 
         /// <inheritdoc />
         public string Key => TaskKey;
 
         /// <inheritdoc />
-        public string Description => "拉取已配置的内容接口，把条目以 .strm 虚拟条目的形式写入媒体库目录";
+        public string Description => SyncTaskCore.Description;
 
         /// <inheritdoc />
-        public string Category => "Library";
+        public string Category => SyncTaskCore.Category;
 
         /// <inheritdoc />
         public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
-            await _syncService.RunAsync(progress, cancellationToken).ConfigureAwait(false);
+            var result = await _syncService.RunAsync(progress, cancellationToken).ConfigureAwait(false);
+            if (result.Failed > 0)
+            {
+                // Surface per-source failures in 计划任务 instead of reporting a green run.
+                throw new InvalidOperationException(
+                    $"{result.Failed} 个数据源同步失败：{string.Join("；", result.Errors)}");
+            }
         }
 
         /// <inheritdoc />
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
-            // Type (string on 10.10.x, enum on 10.11.x) is assigned via TaskTriggerCompat
-            // so that this single build runs correctly on both server versions.
-            return TaskTriggerCompat.CreateDefaultTriggers(TimeSpan.FromHours(6).Ticks);
+            return SyncTaskCore.GetDefaultTriggers();
         }
     }
 }
